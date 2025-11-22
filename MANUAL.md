@@ -22,7 +22,7 @@ bash run.sh
 ```
 
 **4. Use the Bot**
-- Open the **Network URL** (usually `http://localhost:8501`) in your browser.
+- Open the **Network URL** or `http://localhost:8501` in your browser.
 - Upload an image.
 - Write a caption.
 - Click **Start Posting**.
