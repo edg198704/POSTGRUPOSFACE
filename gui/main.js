@@ -18,8 +18,10 @@ document.getElementById('startBtn').onclick = () => {
     if (!dirPath) return alert('Please select a content directory');
 
     // Disable button to prevent double click
-    document.getElementById('startBtn').disabled = true;
-    document.getElementById('startBtn').innerText = 'Running...';
+    const btn = document.getElementById('startBtn');
+    btn.disabled = true;
+    btn.innerText = 'Running...';
+    document.getElementById('logBox').textContent = ''; // Clear logs
 
     ipcRenderer.send('start-post', { token, dirPath, manualText });
 };
@@ -27,7 +29,15 @@ document.getElementById('startBtn').onclick = () => {
 // Handle Logs
 ipcRenderer.on('log', (event, msg) => {
     const logBox = document.getElementById('logBox');
-    const timestamp = newjhDate().toLocaleTimeString();
+    const timestamp = new Date().toLocaleTimeString();
     logBox.textContent += `[${timestamp}] ${msg}\n`;
     logBox.scrollTop = logBox.scrollHeight;
+});
+
+// Handle Finish
+ipcRenderer.on('process-finished', () => {
+    const btn = document.getElementById('startBtn');
+    btn.disabled = false;
+    btn.innerText = 'Start Auto-Posting';
+    alert('Process Finished');
 });
