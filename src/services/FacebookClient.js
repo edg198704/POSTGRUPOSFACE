@@ -46,45 +46,72 @@ class FacebookClient {
         let url = 'https://mbasic.facebook.com/groups/?seemore';
         const groups = [];
         const seenIds = new Set();
+        let lastResponseData = '';
+
+        // 3. FIX HEADERS
+        const headers = { 
+            'Cookie': cookieString,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Upgrade-Insecure-Requests': '1'
+        };
 
         while (url) {
-            const response = await axios.get(url, {
-                headers: { 
-                    'Cookie': cookieString,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-            });
+            try {
+                const response = await axios.get(url, { headers });
+                lastResponseData = response.data;
 
-            const $ = cheerio.load(response.data);
-            
-            $('a[href*="/groups/"]').each((i, el) => {
-                const href = $(el).attr('href');
-                const name = $(el).text();
-                const match = href.match(/\/groups\/(\d+)/);
-                if (match && name) {
-                    const id = match[1];
-                    if (!seenIds.has(id)) {
-                        groups.push({ id, name: name.trim() });
-                        seenIds.add(id);
+                if (response.request.res.responseUrl.includes('login') || response.request.res.responseUrl.includes('checkpoint')) {
+                     await fs.writeFile('debug_mbasic_response.html', lastResponseData);
+                     throw new Error("Cookies expired or checkpoint hit. See debug_mbasic_response.html");
+                }
+
+                const $ = cheerio.load(response.data);
+                
+                // 1. IMPLEMENT ROBUST SCRAPING (Regex > CSS)
+                $('a[href*="/groups/"]').each((i, el) => {
+                    const href = $(el).attr('href');
+                    const name = $(el).text().trim();
+                    
+                    // Regex to find ID or Alias
+                    const match = href.match(/\/groups\/([^/?&]+)/);
+                    if (match && name) {
+                        const id = match[1];
+                        // Filter invalid IDs
+                        if (!['create', 'search', 'joines', 'feed', 'category'].includes(id.toLowerCase())) {
+                            if (!seenIds.has(id)) {
+                                groups.push({ id, name });
+                                seenIds.add(id);
+                            }
+                        }
                     }
-                }
-            });
+                });
 
-            // Pagination: Find 'See more' link
-            const nextHref = $('a:contains("See more")').attr('href');
-            if (nextHref) {
-                url = nextHref.startsWith('http') ? nextHref : 'https://mbasic.facebook.com' + nextHref;
-                await new Promise(r => setTimeout(r, 1000)); // Polite delay
-            } else {
-                url = null;
+                // Pagination
+                const nextHref = $('a:contains("See more")').attr('href');
+                if (nextHref) {
+                    url = nextHref.startsWith('http') ? nextHref : 'https://mbasic.facebook.com' + nextHref;
+                    await new Promise(r => setTimeout(r, 2000)); // Polite delay
+                } else {
+                    url = null;
+                }
+            } catch (e) {
+                console.error("Scraping error:", e.message);
+                break;
             }
+        }
+        
+        if (groups.length === 0) {
+            // 2. ADD DEBUGGING (HTML Dump)
+            await fs.writeFile('debug_mbasic_response.html', lastResponseData);
+            throw new Error("No groups found. Raw HTML saved to 'debug_mbasic_response.html'. Check if logged in.");
         }
         
         return groups;
     }
 
     async postImages(groupId, imagePaths, caption) {
-        // 1. Upload Unpublished
         const mediaIds = [];
         for (const imgPath of imagePaths) {
             const form = new FormData();
@@ -96,7 +123,6 @@ class FacebookClient {
             mediaIds.push(res.data.id);
         }
 
-        // 2. Attach to Feed
         const feedForm = {
             access_token: this.accessToken,
             attached_media: JSON.stringify(mediaIds.map(id => ({ media_fbid: id })))
