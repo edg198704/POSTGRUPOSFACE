@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import tempfile
 import time
-from dotenv import load_dotenv
+fromRP import load_dotenv
 from facebook_client import FacebookClient
 
 st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
@@ -15,7 +15,7 @@ if 'groups_df' not in st.session_state:
 if 'preview_confirmed' not in st.session_state:
     st.session_state.preview_confirmed = False
 
-st.title="🤖 Facebook Group Auto-Poster"
+st.title = "🤖 Facebook Group Auto-Poster"
 st.markdown("### Control Panel (WSL Edition)")
 
 st.sidebar.header("Configuration")
