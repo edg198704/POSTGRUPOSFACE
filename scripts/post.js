@@ -1,21 +1,21 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
-require('dotenv').config();
 const FacebookClient = require('../src/services/FacebookClient');
+require('dotenv').config();
 
 let mainWindow;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 900,
-        height: 700,
+        height: 750,
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false // Allowed for internal automation tools
+            contextIsolation: false
         }
     });
-
+    // Load the GUI file
     mainWindow.loadFile(path.join(__dirname, '../gui/main.html'));
 }
 
@@ -25,56 +25,75 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
-// --- Automation Logic ---
-
-ipcMain.on('start-post', async (event, config) => {
-    const { token, message, imagePath } = config;
-    const sender = event.sender;
-
-    sender.send('log', '🚀 Initializing Facebook Graph API Client...');
-
-    try {
-        const fb = new FacebookClient(token);
-        
-        sender.send('log', '🔍 Scanning for Groups...');
-        const groups = await fb.getPageGroups();
-        sender.send('log', `✅ Found ${groups.length} groups.`);
-
-        if (groups.length === 0) {
-            sender.send('log', '⚠️ No groups found. Ensure the Page is a member of groups.');
-            return;
-        }
-
-        let successCount = 0;
-        let failCount = 0;
-
-        for (const [index, group] of groups.entries()) {
-            sender.send('log', `⏳ [${index + 1}/${groups.length}] Posting to: ${group.name}...`);
-            
-            try {
-                await fb.postToGroup(group.id, message, imagePath);
-                sender.send('log', `✅ Success: ${group.name}`);
-                successCount++;
-            } catch (err) {
-                sender.send('log', `❌ Failed: ${group.name} - ${err.message}`);
-                failCount++;
-            }
-
-            // Safety Delay (Rate Limiting)
-            const delay = Math.floor(Math.random() * 5000) + 5000; // 5-10 seconds
-            sender.send('log', `zzZ Sleeping for ${delay/1000}s...`);
-            await FacebookClient.sleep(delay);
-        }
-
-        sender.send('log', `🏁 Operation Complete. Success: ${successCount}, Failed: ${failCount}`);
-
-    } catch (error) {
-        sender.send('log', `⛔CRITICAL ERROR: ${error.message}`);
-    }
+// IPC: Handle Directory Selection
+ipcMain.handle('select-dir', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    return result.filePaths[0] || null;
 });
 
-// Helper to select file via native dialog if needed
-ipcMain.handle('select-file', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'png', 'jpeg'] }] });
-    return result.filePaths[0];
+// IPC: Start Automation Logic
+ipcMain.on('start-post', async (event, { token, dirPath, manualText }) => {
+    const sendLog = (msg) => event.sender.send('log', msg);
+    
+    if (!token) return sendLog('❌ Error: Access Token is missing.');
+    if (!dirPath) return sendLog('❌ Error: No content directory selected.');
+
+    try {
+        sendLog('🚀 Initializing Facebook Client...');
+        const client = new FacebookClient(token);
+
+        // 1. Fetch Groups
+        sendLog('🔍 Fetching joined groups...');
+        const groups = await client.getGroups();
+        sendLog(`✅ Found ${groups.length} groups.`);
+
+        if (groups.length === 0) {
+            return sendLog('⚠️ No groups found. Check permissions.');
+        }
+
+        // 2. Load Content
+        const files = await fs.readdir(dirPath);
+        const images = files.filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f));
+        
+        if (images.length === 0) {
+            return sendLog('❌ No images found in the selected directory.');
+        }
+
+        // Check for description.txt override
+        let finalMessage = manualText;
+        const descFile = path.join(dirPath, 'description.txt');
+        if (await fs.pathExists(descFile)) {
+            finalMessage = await fs.readFile(descFile, 'utf-8');
+            sendLog('mb Loaded description from description.txt');
+        }
+
+        const imageToPost = path.join(dirPath, images[0]);
+        sendLog(`📸 Selected Image: ${images[0]}`);
+
+        // 3. Posting Loop
+        for (const [index, group] of groups.entries()) {
+            sendLog(`[${index + 1}/${groups.length}] Posting to: ${group.name}...`);
+            
+            try {
+                await client.postPhoto(group.id, imageToPost, finalMessage);
+                sendLog(`✅ Published successfully to ${group.name}`);
+            } catch (err) {
+                sendLog(`❌ Failed: ${err.message}`);
+            }
+
+            // Safety Delay (20-40 seconds)
+            if (index < groups.length - 1) {
+                const delay = Math.floor(Math.random() * (40000 - 20000 + 1) + 20000);
+                sendLog(`⏳ Waiting ${Math.round(delay/1000)}s to avoid rate limits...`);
+                await FacebookClient.sleep(delay);
+            }
+        }
+
+        sendLog('🎉 Automation Cycle Complete!');
+
+    } catch (error) {
+        sendLog(`🔥 Critical Error: ${error.message}`);
+    }
 });
