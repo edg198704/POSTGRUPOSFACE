@@ -4,18 +4,21 @@ const FormData = require('form-data');
 
 class FacebookClient {
     constructor(accessToken) {
-        if (!accessToken) throw new Error("Page Access Token is required.");
+        if (!accessToken) throw new Error("Page Access Token is required");
         this.accessToken = accessToken;
         this.baseUrl = 'https://graph.facebook.com/v19.0';
+        this.axios = axios.create({
+            baseURL: this.baseUrl
+        });
     }
 
     /**
-     * Fetches all groups the Page is a member of.
-     * Requires 'groups_access_member_info' permission.
+     * Fetches groups the Page is a member of.
+     * Endpoint: /me/groups
      */
-    async getGroups() {
+    async getJoinedGroups() {
         try {
-            const response = await axios.get(`${this.baseUrl}/me/groups`, {
+            const response = await this.axios.get('/me/groups', {
                 params: {
                     access_token: this.accessToken,
                     fields: 'id,name,privacy',
@@ -24,33 +27,44 @@ class FacebookClient {
             });
             return response.data.data || [];
         } catch (error) {
-            this.handleError(error, 'fetching groups');
+            this.handleError(error, 'Fetching Groups');
         }
     }
 
     /**
-     * Posts a photo with a caption to a specific group.
-     * Requires 'publish_to_groups' permission.
+     * Posts a photo to a specific group.
+     * Endpoint: /{group_id}/photos
+     * Requires multipart/form-data
      */
-    async postPhoto(groupId, imagePath, message) {
+    async postPhoto(groupId, imagePath, caption) {
         try {
-            const form = new FormData();
-            form.append('source', fs.createReadStream(imagePath));
-            if (message) form.append('caption', message);
-            form.append('access_token', this.accessToken);
+            if (!await fs.pathExists(imagePath)) {
+                throw new Error(`Image not found: ${imagePath}`);
+            }
 
-            const response = await axios.post(`${this.baseUrl}/${groupId}/photos`, form, {
+            const form = new FormData();
+            form.append('access_token', this.accessToken);
+            form.append('source', fs.createReadStream(imagePath));
+            if (caption) {
+                form.append('message', caption);
+            }
+
+            const response = await this.axios.post(`/${groupId}/photos`, form, {
                 headers: form.getHeaders()
             });
+
             return response.data;
         } catch (error) {
-            this.handleError(error, `posting to group ${groupId}`);
+            this.handleError(error, `Posting to Group ${groupId}`);
         }
     }
 
     handleError(error, context) {
-        const msg = error.response?.data?.error?.message || error.message;
-        throw new Error(`Error ${context}: ${msg}`);
+        const msg = error.response 
+            ? JSON.stringify(error.response.data.error) 
+            : error.message;
+        console.error(`[${context}] Error:`, msg);
+        throw new Error(`FB API Error [${context}]: ${msg}`);
     }
 
     static async sleep(ms) {
