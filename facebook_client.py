@@ -1,232 +1,69 @@
 import requests
 import os
-import time
-import random
 import json
 import re
 from bs4 import BeautifulSoup
 
 class FacebookClient:
-    def __init__(self, access_token):
+    def __init__(self, access_token=None):
+        # Token is optional now as we rely on cookies
         self.access_token = access_token
-        self.base_url = "https://graph.facebook.com/v19.0"
         self.session = requests.Session()
         self.cookie_file = "config/cookies.json"
+        self._load_cookies()
 
-    def validate_token(self):
-        try:
-            params = {'access_token': self.access_token, 'fields': 'id,name'}
-            resp = self.session.get(f"{self.base_url}/me", params=params)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:
-            raise Exception(f"Token Validation Failed: {str(e)}")
-
-    def get_groups(self):
-        """Try API first, fallback to Cookies if API fails."""
-        try:
-            print("Attempting to fetch groups via API...")
-            return self._get_groups_api()
-        except Exception as e:
-            print(f"[WARN] Graph API failed ({str(e)}). Switching to Cookie Scraping...")
-            return self._scrape_groups_via_cookies()
-
-    def _get_groups_api(self):
-        groups = []
-        url = f"{self.base_url}/me/groups"
-        params = {
-            'access_token': self.access_token,
-            'fields': 'id,name,privacy',
-            'limit': '50'
-        }
-        while url:
-            resp = self.session.get(url, params=params if 'access_token' not in url else None)
-            resp.raise_for_status()
-            data = resp.json()
-            if 'data' in data:
-                groups.extend(data['data'])
-            url = data.get('paging', {}).get('next')
-            params = None
-        return groups
-
-    def _scrape_groups_via_cookies(self):
+    def _load_cookies(self):
         if not os.path.exists(self.cookie_file):
-            raise Exception("API failed and config/cookies.json not found. Please export cookies using EditThisCookie.")
-
-        with open(self.cookie_file, 'r') as f:
-            cookies_list = json.load(f)
+            raise Exception("config/cookies.json not found.")
         
-        c_user = None
-        for cookie in cookies_list:
-            if cookie.get('value') == "PASTE_VALUE_HERE":
-                raise Exception("❌ CONFIG ERROR: Replace 'PASTE_VALUE_HERE' in cookies.json.")
-            if cookie.get('name') == 'c_user':
-                c_user = cookie.get('value')
-        
-        if not c_user:
-            raise Exception("❌ Cookie Error: 'c_user' not found.")
-
-        scrape_session = requests.Session()
-        scrape_session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Upgrade-Insecure-Requests': '1'
-        })
-
-        for cookie in cookies_list:
-            scrape_session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
-
-        url = f"https://mbasic.facebook.com/profile.php?id={c_user}&v=groups"
-        groups = []
-        seen_ids = set()
-
-        print(f"⏳ Starting Cookie Scrape via Profile: {url}")
-
-        while url:
-            try:
-                resp = scrape_session.get(url, timeout=30)
-            except Exception as e:
-                print(f"Network error during scraping: {e}")
-                break
-
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            # Check for login checkpoints or expiration
-            if any(x in (soup.title.string.lower() if soup.title else "") for x in ['log in', 'entrar', 'welcome', 'checkpoint']):
-                raise Exception("Cookies Invalid or Expired.")
-
-            # Extract groups from current page
-            new_groups = self._extract_groups_from_html(soup, seen_ids)
-            groups.extend(new_groups)
-
-            next_link = soup.find('a', string=lambda t: t and "See more" in t)
-            if next_link and next_link.has_attr('href'):
-                url = next_link['href']
-                if not url.startswith('http'):
-                    url = "https://mbasic.facebook.com" + url
-                time.sleep(random.uniform(2, 4))
-            else:
-                url = None
-        
-        if not groups:
-            # Fallback 1: Local HTML File (Desktop HTML)
-            if os.path.exists("groups.html"):
-                print("⚠️ Network scrape failed. Trying local 'groups.html'...")
-                with open("groups.html", "r", encoding="utf-8") as f:
-                    soup = BeautifulSoup(f.read(), 'html.parser')
-                    groups.extend(self._extract_groups_from_html(soup, seen_ids))
-            
-            # Fallback 2: Local Text File
-            if not groups and os.path.exists("groups.txt"):
-                print("⚠️ No HTML groups found. Trying local 'groups.txt'...")
-                with open("groups.txt", "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            groups.append({'id': line.split('/')[-1], 'name': f"Manual: {line}"})
-        
-        return groups
-
-    def _extract_groups_from_html(self, soup, seen_ids):
-        """Helper to parse groups from BeautifulSoup object using robust Regex."""
-        found = []
-        links = soup.find_all('a', href=True)
-        for a in links:
-            # ROBUST REGEX: Handles relative (/groups/123) and absolute (facebook.com/groups/123)
-            match = re.search(r'(?:facebook\.com|fb\.com)?/groups/([^/?&"]+)', a['href'])
-            if match:
-                group_id = match.group(1)
-                # Filter out common non-group links
-                if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']:
-                    continue
-                name = a.get_text(strip=True) or "Unknown Group"
-                if group_id not in seen_ids:
-                    found.append({'id': group_id, 'name': name})
-                    seen_ids.add(group_id)
-        return found
-
-    def post_images(self, group_id, image_paths, caption=None):
-        try:
-            # 1. Try Graph API
-            media_ids = []
-            for img_path in image_paths:
-                url = f"{self.base_url}/{group_id}/photos"
-                with open(img_path, 'rb') as img_file:
-                    files = {'source': img_file}
-                    data = {'access_token': self.access_token, 'published': 'false'}
-                    resp = self.session.post(url, data=data, files=files)
-                    resp.raise_for_status()
-                    media_ids.append(resp.json()['id'])
-            
-            feed_url = f"{self.base_url}/{group_id}/feed"
-            feed_data = {
-                'access_token': self.access_token,
-                'attached_media': json.dumps([{'media_fbid': mid} for mid in media_ids])
-            }
-            if caption: feed_data['message'] = caption
-                
-            resp = self.session.post(feed_url, data=feed_data)
-            resp.raise_for_status()
-            
-            # Generate Verification Link
-            post_id = resp.json().get('id', '').split('_')[-1]
-            return f"https://www.facebook.com/groups/{group_id}/permalink/{post_id}/"
-
-        except requests.exceptions.HTTPError as e:
-            # Fallback on 403 Forbidden or 400 Bad Request
-            if e.response.status_code in [400, 403]:
-                print(f"⚠️ API Error {e.response.status_code} for {group_id}. Switching to Cookie Fallback...")
-                return self._post_via_cookies(group_id, caption, image_paths)
-            raise e
-
-    def _post_via_cookies(self, group_id, caption, image_paths):
-        if not os.path.exists(self.cookie_file):
-            raise Exception("Cookies not found for fallback.")
-            
         with open(self.cookie_file, 'r') as f:
             cookies_list = json.load(f)
             
-        session = requests.Session()
-        session.headers.update({
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Upgrade-Insecure-Requests': '1'
         })
-        for c in cookies_list:
-            session.cookies.set(c['name'], c['value'], domain=c['domain'])
+        
+        for cookie in cookies_list:
+            self.session.cookies.set(cookie['name'], cookie['value'], domain=cookie.get('domain', '.facebook.com'))
 
-        # 1. Get Group Page to scrape tokens
+    def post_via_mbasic(self, group_id, message):
+        """
+        Posts text to a group using mbasic.facebook.com to bypass API restrictions.
+        """
+        # 1. Navigate to Group Page
         url = f"https://mbasic.facebook.com/groups/{group_id}"
-        resp = session.get(url)
-        if 'login' in resp.url:
-             raise Exception("Cookies expired (Login detected).")
+        print(f"Navigating to {url}...")
+        resp = self.session.get(url)
+        
+        if 'login' in resp.url or 'checkpoint' in resp.url:
+            raise Exception("Cookies expired or checkpoint hit.")
 
         soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # 2. Find the Composer Form
+        # The form action usually contains '/composer/mbasic/'
         form = soup.find('form', action=re.compile(r'/composer/mbasic/'))
-        
         if not form:
-            raise Exception("Could not find Write Post form on mbasic.")
+            # Debug: Save HTML if form not found
+            with open("debug_no_form.html", "w", encoding="utf-8") as f: f.write(resp.text)
+            raise Exception("Could not find posting form on mbasic page.")
 
-        action_url = "https://mbasic.facebook.com" + form['action']
+        # 3. Extract Hidden Inputs (fb_dtsg, jazoest, target, etc.)
         data = {}
-        # Scrape fb_dtsg, jazoest, and other hidden inputs
         for inp in form.find_all('input', type='hidden'):
-            data[inp.get('name')] = inp.get('value')
+            if inp.get('name') and inp.get('value'):
+                data[inp.get('name')] = inp.get('value')
 
-        data['xc_message'] = caption if caption else ""
-        
-        if image_paths:
-            data['xc_message'] += "\n\n(Image upload skipped in fallback mode)"
+        # 4. Add Message Payload
+        data['xc_message'] = message
+        data['view_post'] = 'Post'  # The submit button name
 
-        submit_btn = form.find('input', type='submit')
-        if submit_btn and submit_btn.get('name'):
-            data[submit_btn.get('name')] = submit_btn.get('value')
-
-        post_resp = session.post(action_url, data=data)
+        # 5. Submit POST
+        action_url = "https://mbasic.facebook.com" + form['action']
+        post_resp = self.session.post(action_url, data=data)
         post_resp.raise_for_status()
         
-        # Return Verification Link
-        return f"https://www.facebook.com/groups/{group_id}"
-
-    @staticmethod
-    def get_random_sleep(min_sec=30, max_sec=90):
-        return random.randint(min_sec, max_sec)
+        return post_resp.url
