@@ -12,7 +12,8 @@ st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
 load_dotenv()
 default_token = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
 
-st.title="🤖 Facebook Group Auto-Poster"
+# FIX: Call st.title as a function
+st.title("🤖 Facebook Group Auto-Poster")
 st.markdown("### Control Panel (WSL Edition)")
 
 # Sidebar: Configuration
