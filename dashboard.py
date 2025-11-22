@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import tempfile
 import time
-from dotenv import load_dotenv
+fromyb dotenv import load_dotenv
 from facebook_client import FacebookClient
 
 st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
@@ -22,9 +22,11 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("1. Create Post")
+    # Multi-Photo Support Input
     uploaded_files = st.file_uploader("Upload Images", type=['jpg', 'png', 'jpeg'], accept_multiple_files=True)
     caption = st.text_area("Post Caption", height=150, placeholder="Write your message here...")
     
+    # Safety Preview Logic
     if st.button("👁️ Preview Post"):
         if not uploaded_files:
             st.error("Please upload at least one image.")
@@ -34,6 +36,7 @@ with col1:
     if st.session_state.preview_confirmed:
         st.info("👇 Review your post below. Click 'Confirm & Blast' to start.")
         st.markdown(f"**Caption:** {caption}")
+        # Display Grid of Images
         st.image(uploaded_files, width=150, caption=[f.name for f in uploaded_files])
         
         if st.button("🚀 CONFIRM & BLAST", type="primary"):
@@ -55,7 +58,7 @@ if st.session_state.get('start_posting'):
         st.error("❌ Error: Access Token is missing.")
     else:
         temp_paths = []
-        # Save temp files
+        # Save temp files for the backend to read
         for uf in uploaded_files:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
                 tmp.write(uf.getbuffer())
@@ -76,6 +79,7 @@ if st.session_state.get('start_posting'):
             for i, group in enumerate(groups):
                 log(f"bw Posting to: {group['name']}...")
                 try:
+                    # Multi-Photo Logic Call
                     client.post_images(group['id'], temp_paths, caption)
                     log(f"✅ Success: {group['name']}")
                 except Exception as e:
@@ -93,5 +97,6 @@ if st.session_state.get('start_posting'):
         except Exception as e:
             st.error(f"Critical Error: {str(e)}")
         finally:
+            # Cleanup Temp Files
             for p in temp_paths:
                 if os.path.exists(p): os.remove(p)
