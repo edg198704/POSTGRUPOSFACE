@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import tempfile
 import time
+fromqc = st.query_params
 from dotenv import load_dotenv
 from facebook_client import FacebookClient
 
@@ -69,9 +70,7 @@ if st.session_state.groups_df is not None:
         height=300,
         key="groups_editor"
     )
-    # Sync manual changes back to session state
     st.session_state.groups_df = edited_df
-    
     selected_groups = edited_df[edited_df["Select"]].to_dict('records')
     st.caption(f"✅ Target: {len(selected_groups)} groups selected.")
 
@@ -117,9 +116,10 @@ if st.session_state.get('start_posting'):
 
     def log(message):
         timestamp = time.strftime("%H:%M:%S")
-        logs.append(f"[{timestamp}] {message}")
-        if len(logs) > 15: logs.pop(0)
-        log_area.code("\n".join(logs), language="text")
+        logs.append(f"**[{timestamp}]** {message}")
+        # Keep last 20 logs, render as Markdown for links
+        if len(logs) > 20: logs.pop(0)
+        log_area.markdown("\n\n".join(logs))
 
     temp_paths = []
     for uf in uploaded_files:
@@ -134,8 +134,16 @@ if st.session_state.get('start_posting'):
         for i, group in enumerate(selected_groups):
             log(f"bw Posting to: {group['name']} ({i+1}/{total})...")
             try:
-                client.post_images(group['id'], temp_paths, caption)
-                log(f"✅ Success: {group['name']}")
+                # Returns dict with success, link, method
+                result = client.post_images(group['id'], temp_paths, caption)
+                
+                if result.get('success'):
+                    link = result.get('link', '#')
+                    method = result.get('method', 'API')
+                    log(f"✅ Success [{method}]: {group['name']} - [View Post]({link})")
+                else:
+                    log(f"❌ Failed: {group['name']} - Unknown Error")
+                    
             except Exception as e:
                 log(f"❌ Failed: {group['name']} - {e}")
             
