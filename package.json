@@ -1,16 +1,15 @@
 {
   "name": "facebook-group-autoposter",
-  "version": "2.0.0",
-  "description": "Facebook Page Group Auto-Poster using Graph API",
+  "version": "2.1.0",
+  "description": "Facebook Page Group Auto-Poster",
   "main": "scripts/post.js",
   "scripts": {
     "start": "electron .",
     "pack": "electron-packager . fb-poster --platform=win32 --arch=x64 --out=dist --overwrite"
   },
-  "author": "Elite Engineer",
-  "license": "MIT",
   "dependencies": {
     "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.3.1",
     "electron": "^26.2.0",
     "form-data": "^4.0.0",
