@@ -1,0 +1,5 @@
+# PASTE YOUR GROUP LINKS OR IDS HERE (ONE PER LINE)
+# Example:
+# https://www.facebook.com/groups/123456789
+# 987654321
+# https://mbasic.facebook.com/groups/my.alias.group/
