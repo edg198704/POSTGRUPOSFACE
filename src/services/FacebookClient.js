@@ -8,7 +8,8 @@ class FacebookClient {
         this.accessToken = accessToken;
         this.baseUrl = 'https://graph.facebook.com/v19.0';
         this.axios = axios.create({
-            baseURL: this.baseUrl
+            baseURL: this.baseUrl,
+            timeout: 60000 // 60s timeout for uploads
         });
     }
 
@@ -16,7 +17,7 @@ class FacebookClient {
      * Fetches groups the Page is a member of.
      * Endpoint: /me/groups
      */
-    async getJoinedGroups() {
+    async getGroups() {
         try {
             const response = await this.axios.get('/me/groups', {
                 params: {
@@ -50,7 +51,9 @@ class FacebookClient {
             }
 
             const response = await this.axios.post(`/${groupId}/photos`, form, {
-                headers: form.getHeaders()
+                headers: {
+                    ...form.getHeaders()
+                }
             });
 
             return response.data;
@@ -60,11 +63,12 @@ class FacebookClient {
     }
 
     handleError(error, context) {
-        const msg = error.response 
-            ? JSON.stringify(error.response.data.error) 
+        const msg = error.response && error.response.data && error.response.data.error
+            ? `[API] ${error.response.data.error.message}`
             : error.message;
+        
         console.error(`[${context}] Error:`, msg);
-        throw new Error(`FB API Error [${context}]: ${msg}`);
+        throw new Error(msg);
     }
 
     static async sleep(ms) {
