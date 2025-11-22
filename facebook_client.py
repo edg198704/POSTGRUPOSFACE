@@ -50,18 +50,15 @@ class FacebookClient:
 
     def _scrape_groups_via_cookies(self):
         if not os.path.exists(self.cookie_file):
-            raise Exception("API failed and config/cookies.json not found. Please create it using the template.")
+            raise Exception("config/cookies.json not found. Please create it using the template.")
 
         with open(self.cookie_file, 'r') as f:
-            try:
-                cookies_list = json.load(f)
-            except json.JSONDecodeError:
-                raise Exception("config/cookies.json is not valid JSON.")
+            cookies_list = json.load(f)
         
-        # CRITICAL: Check for placeholders
+        # VALIDATION: Check for placeholders
         for cookie in cookies_list:
-            if cookie.get('value') in ["PASTE_VALUE_HERE", "REPLACE_ME"]:
-                raise Exception(f"❌ Placeholder detected in cookies.json for '{cookie.get('name')}'. Please open Chrome DevTools -> Application -> Cookies, copy the values for 'c_user' and 'xs', and paste them into config/cookies.json.")
+            if cookie.get('name') in ['c_user', 'xs'] and cookie.get('value') == "PASTE_VALUE_HERE":
+                raise Exception("Please open config/cookies.json and paste your 'c_user' and 'xs' cookies from Chrome.")
 
         scrape_session = requests.Session()
         scrape_session.headers.update({
@@ -82,17 +79,16 @@ class FacebookClient:
             resp = scrape_session.get(url)
             if "login" in resp.url or resp.status_code != 200:
                 if not groups:
-                    raise Exception("Cookies expired or invalid (redirected to login). Please re-export cookies from Chrome.")
+                    raise Exception("Cookies expired or invalid. Please re-export cookies from Chrome.")
                 break
 
             soup = BeautifulSoup(resp.text, 'html.parser')
             
-            # Find all group links in mbasic
+            # Find all group links
             for a in soup.find_all('a', href=True):
                 href = a['href']
                 if '/groups/' in href:
                     try:
-                        # Extract ID safely from /groups/12345/?refid=...
                         parts = href.split('/groups/')
                         if len(parts) > 1:
                             id_part = parts[1].split('/')[0].split('?')[0]
@@ -104,7 +100,6 @@ class FacebookClient:
                     except Exception:
                         continue
             
-            # Pagination: Find 'See more' link
             next_link = soup.find('a', string=lambda t: t and "See more" in t)
             if next_link and next_link.has_attr('href'):
                 url = next_link['href']
@@ -115,14 +110,14 @@ class FacebookClient:
                 url = None
         
         if not groups:
-            raise Exception("No groups found via scraping. Check if your account has groups or if cookies are valid.")
+            raise Exception("No groups found via scraping. Check cookie validity.")
         
         print(f"✅ Scraped {len(groups)} groups via cookies.")
         return groups
 
     def post_images(self, group_id, image_paths, caption=None):
-        # 1. Upload photos as unpublished (published=false) to get media IDs
         media_ids = []
+        # 1. Upload photos as unpublished
         for img_path in image_paths:
             url = f"{self.base_url}/{group_id}/photos"
             with open(img_path, 'rb') as img_file:
@@ -135,7 +130,7 @@ class FacebookClient:
                 resp.raise_for_status()
                 media_ids.append(resp.json()['id'])
         
-        # 2. Publish to Feed with attached_media
+        # 2. Publish to Feed
         feed_url = f"{self.base_url}/{group_id}/feed"
         feed_data = {
             'access_token': self.access_token,
