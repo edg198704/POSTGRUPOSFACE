@@ -11,7 +11,7 @@ st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
 load_dotenv()
 default_token = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
 
-st.title("🤖 Facebook Group Auto-Poster")
+st.title="🤖 Facebook Group Auto-Poster"
 st.markdown("Control panel for automating posts to all your Facebook Groups.")
 
 # Sidebar: Configuration
@@ -45,9 +45,9 @@ if start_btn:
     elif not uploaded_file:
         st.error("❌ Error: Please upload an image.")
     else:
+        temp_path = f"temp_{uploaded_file.name}"
         try:
             # Save temp image
-            temp_path = f"temp_{uploaded_file.name}"
             with open(temp_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             
@@ -83,9 +83,9 @@ if start_btn:
                 
                 st.success("🎉 All posts completed!")
                 
+        except Exception as e:
+            st.error(f"Critical Error: {str(e)}")
+        finally:
             # Cleanup
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-                
-        except Exception as e:
-            st.error(f"Critical Error: {str(e)}")
