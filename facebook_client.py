@@ -153,16 +153,16 @@ class FacebookClient:
                         html_content = f.read()
                     
                     # Universal Regex for Desktop & Mobile (Absolute & Relative)
-                    # Matches: href="https://facebook.com/groups/12345" OR href="/groups/12345"
+                    # Matches: facebook.com/groups/12345 OR /groups/12345
                     # Captures the ID part (Numeric or Vanity)
-                    # Handles quotes and query parameters
-                    regex_pattern = r'href=["\'](?:https?:\/\/)?(?:www\.|m\.|mbasic\.)?(?:facebook\.com)?\/groups\/([a-zA-Z0-9\._-]+)'
-                    raw_matches = re.findall(regex_pattern, html_content)
+                    # Added robustness: handles quotes, query params, and http/https
+                    regex_pattern = r'(?:facebook\.com\/groups\/|\/groups\/)([a-zA-Z0-9._-]+)'
+                    raw_matches = re.findall(regex_pattern, html_content, re.IGNORECASE)
                     
                     ignore_list = {'create', 'search', 'joines', 'feed', 'category', 'discover', 'joins', 'about', 'members'}
                     
                     for group_id in raw_matches:
-                        # Clean potential trailing chars or slashes
+                        # Clean potential trailing chars
                         clean_id = group_id.strip('/')
                         
                         if clean_id.lower() not in ignore_list and clean_id not in seen_ids:
