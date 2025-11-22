@@ -16,6 +16,7 @@ source venv/bin/activate
 
 # Launch Dashboard
 echo "🚀 Launching Dashboard..."
-echo "👉 If the browser does not open, click the URL below (e.g., http://localhost:8501)"
+echo "👉 Open this URL in your browser: http://localhost:8501"
 
+# Run headless to avoid xdg-open issues in WSL
 streamlit run dashboard.py --server.headless true
