@@ -1,0 +1,22 @@
+{
+  "name": "auto_post_fb_gui",
+  "version": "1.0.0",
+  "description": "Automatización de publicaciones en Facebook con GUI en Electron (WSL2 compatible)",
+  "main": "scripts/post.js",
+  "scripts": {
+    "start": "electron scripts/post.js",
+    "dev": "electron .",
+    "build": "electron-packager . auto_post_fb_gui --platform=win32 --arch=x64 --out=dist --overwrite"
+  },
+  "author": "Tu Nombre",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^26.2.0",
+    "fs-extra": "^11.1.1",
+    "playwright": "^1.56.1",
+    "puppeteer": "^23.0.0"
+  },
+  "devDependencies": {
+    "electron-packager": "^17.1.1"
+  }
+}

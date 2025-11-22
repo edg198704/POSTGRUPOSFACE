@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Facebook Auto Post</title>
+<style>
+    body { font-family: Arial; margin: 20px; }
+    textarea { width: 100%; }
+    #vistaPrevia img { margin: 5px; max-width: 200px; }
+</style>
+</head>
+<body>
+<h2>Facebook Auto Post</h2>
+
+<textarea id="texto" placeholder="Escribe tu publicación..." rows="8"></textarea>
+<br><br>
+
+<input type="file" id="fotos" multiple />
+<br><br>
+
+<label>Los grupos serán detectados automáticamente desde tu página.</label>
+<input type="text" id="grupos" style="display:none"> <!-- oculto, ya no se usa -->
+
+<br><br>
+
+<button id="preview">Preview</button>
+<button id="publicar">Publicar</button>
+
+<h3>Vista Previa</h3>
+<div id="vistaPrevia"></div>
+
+<script>
+const { ipcRenderer } = require('electron');
+
+document.getElementById('preview').addEventListener('click', () => {
+    const texto = document.getElementById('texto').value;
+    const fotos = document.getElementById('fotos').files;
+    let html = `<p>${texto.replace(/\n/g,'<br>')}</p>`;
+    for(let i=0;i<fotos.length;i++){
+        html += `<img src="${URL.createObjectURL(fotos[i])}"/>`;
+    }
+    document.getElementById('vistaPrevia').innerHTML = html;
+});
+
+document.getElementById('publicar').addEventListener('click', () => {
+    const texto = document.getElementById('texto').value;
+    const fotos = Array.from(document.getElementById('fotos').files).map(f => f.path);
+    const grupos = document.getElementById('grupos').value.split(',').map(g => g.trim());
+    ipcRenderer.send('publicar', { texto, fotos, grupos });
+});
+</script>
+</body>
+</html>
