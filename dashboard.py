@@ -15,7 +15,7 @@ if 'groups_df' not in st.session_state:
 if 'preview_confirmed' not in st.session_state:
     st.session_state.preview_confirmed = False
 
-st.title = "🤖 Facebook Group Auto-Poster"
+st.title("🤖 Facebook Group Auto-Poster")
 st.markdown("### Control Panel (WSL Edition)")
 
 st.sidebar.header("Configuration")
