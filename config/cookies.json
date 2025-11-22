@@ -1,15 +1,15 @@
 [
   {
     "name": "c_user",
-    "value": "539522639",
+    "value": "PASTE_VALUE_HERE",
     "domain": ".facebook.com",
     "path": "/",
-    "httpOnly": true,
+    "httpOnly": false,
     "secure": true
   },
   {
     "name": "xs",
-    "value": "27%3AWIDsJPOhEmOgdw%3A2%3A1715571235%3A-1%3A-1%3A%3AAcxL_HPHzoor9Tb4Z0kqdSjY8A0X1g14EMJuW3Fq2r_5",
+    "value": "PASTE_VALUE_HERE",
     "domain": ".facebook.com",
     "path": "/",
     "httpOnly": true,
@@ -17,10 +17,10 @@
   },
   {
     "name": "fr",
-    "value": "1m3AzhnSoC8NnmM1U.AWdJ59ao7Cl1jCnnS1oDA-yoEoj2gnRFGG-CNNAJXcWiCNVIOq0.BpIOen..AAA.0.0.BpIOen.AWcY2dtApTBNnyJM_mEpFucIBKI",
+    "value": "PASTE_VALUE_HERE",
     "domain": ".facebook.com",
     "path": "/",
-    "httpOnly": false,
+    "httpOnly": true,
     "secure": true
   }
 ]
