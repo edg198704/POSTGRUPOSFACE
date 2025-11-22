@@ -33,14 +33,14 @@ class FacebookClient {
      */
     async getGroups() {
         let allGroups = [];
+        // Use relative path for the first call; axios instance handles baseURL.
         let nextUrl = `/me/groups?fields=id,name,privacy&limit=50&access_token=${this.accessToken}`;
 
         try {
             while (nextUrl) {
-                // If nextUrl is a full URL, we need to handle it carefully with axios or just use the path if possible.
-                // However, axios.get(fullUrl) works if we override baseURL logic or just use a fresh call.
-                // Simplest way: use a raw axios call for pagination URLs as they are absolute.
-                const response = await axios.get(nextUrl);
+                // Use this.axios to handle the initial relative URL correctly.
+                // For subsequent full URLs (pagination), axios automatically overrides the baseURL.
+                const response = await this.axios.get(nextUrl);
                 
                 const data = response.data;
                 if (data.data && data.data.length > 0) {
