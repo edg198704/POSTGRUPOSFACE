@@ -25,6 +25,10 @@ if ! dpkg -s python3-venv &> /dev/null; then
     sudo apt-get install -y python3-venv
 fi
 
+# Install lxml dependencies
+echo "📦 Installing lxml system dependencies..."
+sudo apt-get install -y libxml2-dev libxslt-dev
+
 # 2. Create Virtual Environment
 if [ ! -d "venv" ]; then
     echo "🔨 Creating Virtual Environment (venv)..."
