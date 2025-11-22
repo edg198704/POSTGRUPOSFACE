@@ -172,8 +172,9 @@ class FacebookClient:
             return f"https://www.facebook.com/groups/{group_id}/permalink/{post_id}/"
 
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 403:
-                print(f"⚠️ API 403 Forbidden for {group_id}. Switching to Cookie Fallback...")
+            # Handle 403 Forbidden AND 400 Bad Request by switching to Cookie Mode
+            if e.response.status_code in [400, 403]:
+                print(f"⚠️ API Error {e.response.status_code} for {group_id}. Switching to Cookie Fallback...")
                 return self._post_via_cookies(group_id, caption, image_paths)
             raise e
 
@@ -207,6 +208,7 @@ class FacebookClient:
 
         action_url = "https://mbasic.facebook.com" + form['action']
         data = {}
+        # Scrape all hidden inputs (includes fb_dtsg, jazoest, etc.)
         for inp in form.find_all('input', type='hidden'):
             data[inp.get('name')] = inp.get('value')
 
