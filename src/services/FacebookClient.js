@@ -43,26 +43,44 @@ class FacebookClient {
         const cookies = await fs.readJson(cookiePath);
         const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
         
-        const response = await axios.get('https://mbasic.facebook.com/groups/?seemore', {
-            headers: { 
-                'Cookie': cookieString,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
-
-        const $ = cheerio.load(response.data);
+        let url = 'https://mbasic.facebook.com/groups/?seemore';
         const groups = [];
-        $('a[href*="/groups/"]').each((i, el) => {
-            const href = $(el).attr('href');
-            const name = $(el).text();
-            const match = href.match(/\/groups\/(\d+)/);
-            if (match && name) {
-                groups.push({ id: match[1], name: name.trim() });
+        const seenIds = new Set();
+
+        while (url) {
+            const response = await axios.get(url, {
+                headers: { 
+                    'Cookie': cookieString,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            });
+
+            const $ = cheerio.load(response.data);
+            
+            $('a[href*="/groups/"]').each((i, el) => {
+                const href = $(el).attr('href');
+                const name = $(el).text();
+                const match = href.match(/\/groups\/(\d+)/);
+                if (match && name) {
+                    const id = match[1];
+                    if (!seenIds.has(id)) {
+                        groups.push({ id, name: name.trim() });
+                        seenIds.add(id);
+                    }
+                }
+            });
+
+            // Pagination: Find 'See more' link
+            const nextHref = $('a:contains("See more")').attr('href');
+            if (nextHref) {
+                url = nextHref.startsWith('http') ? nextHref : 'https://mbasic.facebook.com' + nextHref;
+                await new Promise(r => setTimeout(r, 1000)); // Polite delay
+            } else {
+                url = null;
             }
-        });
+        }
         
-        // Deduplicate
-        return [...new Map(groups.map(item => [item.id, item])).values()];
+        return groups;
     }
 
     async postImages(groupId, imagePaths, caption) {
