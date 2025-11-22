@@ -14,13 +14,5 @@
     "path": "/",
     "httpOnly": true,
     "secure": true
-  },
-  {
-    "name": "fr",
-    "value": "PASTE_VALUE_HERE",
-    "domain": ".facebook.com",
-    "path": "/",
-    "httpOnly": true,
-    "secure": true
   }
 ]
