@@ -1,60 +1,56 @@
 const axios = require('axios');
 const fs = require('fs-extra');
-const path = require('path');
+const FormData = require('form-data');
 
 class FacebookClient {
     constructor(accessToken) {
-        if (!accessToken) throw new Error("Page Access Token is required");
+        if (!accessToken) throw new Error("Page Access Token is required.");
         this.accessToken = accessToken;
         this.baseUrl = 'https://graph.facebook.com/v19.0';
-        this.axios = axios.create({
-            baseURL: this.baseUrl,
-            params: { access_token: this.accessToken }
-        });
     }
 
-    async getPageGroups() {
+    /**
+     * Fetches all groups the Page is a member of.
+     * Requires 'groups_access_member_info' permission.
+     */
+    async getGroups() {
         try {
-            // Fetches groups the Page belongs to or manages
-            const response = await this.axios.get('/me/groups', {
-                params: { fields: 'id,name,privacy', limit: 100 }
+            const response = await axios.get(`${this.baseUrl}/me/groups`, {
+                params: {
+                    access_token: this.accessToken,
+                    fields: 'id,name,privacy',
+                    limit: 100
+                }
             });
             return response.data.data || [];
         } catch (error) {
-            console.error('Error fetching groups:', error.response ? error.response.data : error.message);
-            throw new Error('Failed to fetch groups. Check Token Permissions.');
+            this.handleError(error, 'fetching groups');
         }
     }
 
-    async postToGroup(groupId, message, imagePath = null) {
+    /**
+     * Posts a photo with a caption to a specific group.
+     * Requires 'publish_to_groups' permission.
+     */
+    async postPhoto(groupId, imagePath, message) {
         try {
-            if (imagePath) {
-                // Post Photo with Caption
-                const formData = new FormData();
-                const imageBuffer = await fs.readFile(imagePath);
-                const blob = new Blob([imageBuffer]);
-                
-                // Note: In Node.js environment with Axios, we use specific form-data handling or direct binary upload
-                // For simplicity and robustness in Node, we post binary directly to the source url if possible, 
-                // but Graph API prefers multipart/form-data for local files. 
-                // However, a simpler approach for this snippet is using a public URL or binary stream.
-                // Let's use the binary upload endpoint for robustness:
-                
-                const fileStream = fs.createReadStream(imagePath);
-                const res = await this.axios.post(`/${groupId}/photos`, fileStream, {
-                    params: { caption: message },
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                return res.data;
-            } else {
-                // Post Text Only
-                const res = await this.axios.post(`/${groupId}/feed`, { message });
-                return res.data;
-            }
+            const form = new FormData();
+            form.append('source', fs.createReadStream(imagePath));
+            if (message) form.append('caption', message);
+            form.append('access_token', this.accessToken);
+
+            const response = await axios.post(`${this.baseUrl}/${groupId}/photos`, form, {
+                headers: form.getHeaders()
+            });
+            return response.data;
         } catch (error) {
-            const errMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-            throw new Error(`Failed to post to ${groupId}: ${errMsg}`);
+            this.handleError(error, `posting to group ${groupId}`);
         }
+    }
+
+    handleError(error, context) {
+        const msg = error.response?.data?.error?.message || error.message;
+        throw new Error(`Error ${context}: ${msg}`);
     }
 
     static async sleep(ms) {
