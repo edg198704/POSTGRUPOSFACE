@@ -1,95 +1,94 @@
 const axios = require('axios');
 const fs = require('fs-extra');
 const FormData = require('form-data');
+const cheerio = require('cheerio');
+const path = require('path');
 
 class FacebookClient {
     constructor(accessToken) {
-        if (!accessToken) throw new Error("Page Access Token is required");
         this.accessToken = accessToken;
         this.baseUrl = 'https://graph.facebook.com/v19.0';
-        this.axios = axios.create({
-            baseURL: this.baseUrl,
-            timeout: 120000 // 2 minutes for large uploads
-        });
+        this.axios = axios.create({ baseURL: this.baseUrl, timeout: 120000 });
     }
 
-    /**
-     * Verifies the token and returns Page details.
-     */
     async validateToken() {
-        try {
-            const response = await this.axios.get('/me', {
-                params: { access_token: this.accessToken, fields: 'id,name,access_token' }
-            });
-            return response.data;
-        } catch (error) {
-            this.handleError(error, 'Token Validation');
-        }
+        const res = await this.axios.get('/me', { params: { access_token: this.accessToken, fields: 'id,name' } });
+        return res.data;
     }
 
-    /**
-     * Recursively fetches ALL groups the Page is a member of.
-     * Handles Graph API pagination.
-     */
     async getGroups() {
-        let allGroups = [];
-        // FIX: Use absolute URL for the first call so the global axios instance can handle it
-        let nextUrl = `${this.baseUrl}/me/groups?fields=id,name,privacy&limit=50&access_token=${this.accessToken}`;
-
         try {
-            while (nextUrl) {
-                // Use raw axios for pagination URLs as they are absolute and provided by FB
-                const response = await axios.get(nextUrl);
-                
-                const data = response.data;
-                if (data.data && data.data.length > 0) {
-                    allGroups = allGroups.concat(data.data);
-                }
-
-                nextUrl = data.paging && data.paging.next ? data.paging.next : null;
-            }
-            return allGroups;
-        } catch (error) {
-            this.handleError(error, 'Fetching Groups');
+            return await this._getGroupsApi();
+        } catch (e) {
+            console.warn("API Failed, attempting cookie scrape...");
+            return await this._getGroupsViaCookies();
         }
     }
 
-    /**
-     * Posts a photo to a specific group.
-     */
-    async postPhoto(groupId, imagePath, caption) {
-        try {
-            if (!await fs.pathExists(imagePath)) {
-                throw new Error(`Image not found: ${imagePath}`);
-            }
+    async _getGroupsApi() {
+        let groups = [];
+        let nextUrl = `${this.baseUrl}/me/groups?fields=id,name&limit=50&access_token=${this.accessToken}`;
+        while (nextUrl) {
+            const res = await axios.get(nextUrl);
+            if (res.data.data) groups = groups.concat(res.data.data);
+            nextUrl = res.data.paging?.next || null;
+        }
+        return groups;
+    }
 
+    async _getGroupsViaCookies() {
+        const cookiePath = path.join(__dirname, '../../config/cookies.json');
+        if (!fs.existsSync(cookiePath)) throw new Error("cookies.json missing");
+        
+        const cookies = await fs.readJson(cookiePath);
+        const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+        
+        const res = await axios.get('https://mbasic.facebook.com/groups/?seemore', {
+            headers: { 
+                'Cookie': cookieStr,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        const $ = cheerio.load(res.data);
+        const groups = [];
+        const seen = new Set();
+
+        $('a[href*="/groups/"]').each((i, el) => {
+            const href = $(el).attr('href');
+            try {
+                const idMatch = href.match(/\/groups\/(\d+)/);
+                if (idMatch && !seen.has(idMatch[1])) {
+                    groups.push({ id: idMatch[1], name: $(el).text().trim() });
+                    seen.add(idMatch[1]);
+                }
+            } catch (e) {}
+        });
+        return groups;
+    }
+
+    async postImages(groupId, imagePaths, caption) {
+        const mediaIds = [];
+        // 1. Upload unpublished
+        for (const imgPath of imagePaths) {
             const form = new FormData();
             form.append('access_token', this.accessToken);
-            form.append('source', fs.createReadStream(imagePath));
-            if (caption) {
-                form.append('message', caption);
-            }
-
-            const response = await this.axios.post(`/${groupId}/photos`, form, {
-                headers: {
-                    ...form.getHeaders()
-                }
-            });
-
-            return response.data;
-        } catch (error) {
-            this.handleError(error, `Posting to Group ${groupId}`);
+            form.append('source', fs.createReadStream(imgPath));
+            form.append('published', 'false');
+            const res = await this.axios.post(`/${groupId}/photos`, form, { headers: form.getHeaders() });
+            mediaIds.push(res.data.id);
         }
-    }
 
-    handleError(error, context) {
-        let msg = error.message;
-        if (error.response && error.response.data && error.response.data.error) {
-            const fbError = error.response.data.error;
-            msg = `[API Error ${fbError.code}] ${fbError.message} (Type: ${fbError.type})`;
-        }
-        console.error(`[${context}] ${msg}`);
-        throw new Error(msg);
+        // 2. Publish Feed
+        if (mediaIds.length === 0) return;
+        const attached_media = mediaIds.map(id => ({ media_fbid: id }));
+        
+        const res = await this.axios.post(`/${groupId}/feed`, {
+            access_token: this.accessToken,
+            message: caption,
+            attached_media: JSON.stringify(attached_media)
+        });
+        return res.data;
     }
 
     static async sleep(ms) {
