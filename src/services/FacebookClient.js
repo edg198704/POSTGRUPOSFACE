@@ -9,24 +9,47 @@ class FacebookClient {
         this.baseUrl = 'https://graph.facebook.com/v19.0';
         this.axios = axios.create({
             baseURL: this.baseUrl,
-            timeout: 60000 // 60s timeout for uploads
+            timeout: 120000 // 2 minutes for large uploads
         });
     }
 
     /**
-     * Fetches groups the Page is a member of.
-     * Endpoint: /me/groups
+     * Verifies the token and returns Page details.
+     */
+    async validateToken() {
+        try {
+            const response = await this.axios.get('/me', {
+                params: { access_token: this.accessToken, fields: 'id,name,access_token' }
+            });
+            return response.data;
+        } catch (error) {
+            this.handleError(error, 'Token Validation');
+        }
+    }
+
+    /**
+     * Recursively fetches ALL groups the Page is a member of.
+     * Handles Graph API pagination.
      */
     async getGroups() {
+        let allGroups = [];
+        let nextUrl = `/me/groups?fields=id,name,privacy&limit=50&access_token=${this.accessToken}`;
+
         try {
-            const response = await this.axios.get('/me/groups', {
-                params: {
-                    access_token: this.accessToken,
-                    fields: 'id,name,privacy',
-                    limit: 100
+            while (nextUrl) {
+                // If nextUrl is a full URL, we need to handle it carefully with axios or just use the path if possible.
+                // However, axios.get(fullUrl) works if we override baseURL logic or just use a fresh call.
+                // Simplest way: use a raw axios call for pagination URLs as they are absolute.
+                const response = await axios.get(nextUrl);
+                
+                const data = response.data;
+                if (data.data && data.data.length > 0) {
+                    allGroups = allGroups.concat(data.data);
                 }
-            });
-            return response.data.data || [];
+
+                nextUrl = data.paging && data.paging.next ? data.paging.next : null;
+            }
+            return allGroups;
         } catch (error) {
             this.handleError(error, 'Fetching Groups');
         }
@@ -34,8 +57,6 @@ class FacebookClient {
 
     /**
      * Posts a photo to a specific group.
-     * Endpoint: /{group_id}/photos
-     * Requires multipart/form-data
      */
     async postPhoto(groupId, imagePath, caption) {
         try {
@@ -63,11 +84,12 @@ class FacebookClient {
     }
 
     handleError(error, context) {
-        const msg = error.response && error.response.data && error.response.data.error
-            ? `[API] ${error.response.data.error.message}`
-            : error.message;
-        
-        console.error(`[${context}] Error:`, msg);
+        let msg = error.message;
+        if (error.response && error.response.data && error.response.data.error) {
+            const fbError = error.response.data.error;
+            msg = `[API Error ${fbError.code}] ${fbError.message} (Type: ${fbError.type})`;
+        }
+        console.error(`[${context}] ${msg}`);
         throw new Error(msg);
     }
 
