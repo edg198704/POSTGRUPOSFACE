@@ -62,32 +62,52 @@ class FacebookClient:
             scrape_session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
 
         url = "https://mbasic.facebook.com/groups/?seemore"
-        resp = scrape_session.get(url)
-        
-        if "login" in resp.url or resp.status_code != 200:
-            raise Exception("Cookies expired or invalid. Please re-export cookies.")
-
-        soup = BeautifulSoup(resp.text, 'html.parser')
         groups = []
         seen_ids = set()
 
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            if '/groups/' in href:
-                try:
-                    parts = href.split('/groups/')
-                    if len(parts) > 1:
-                        group_id = parts[1].split('/')[0].split('?')[0]
-                        if group_id.isdigit() and group_id not in seen_ids:
-                            name = a.get_text().strip()
-                            if name:
-                                groups.append({'id': group_id, 'name': name})
-                                seen_ids.add(group_id)
-                except Exception:
-                    continue
+        print("⏳ Starting Cookie Scrape (this may take a moment)...")
+
+        while url:
+            resp = scrape_session.get(url)
+            if "login" in resp.url or resp.status_code != 200:
+                if not groups:
+                    raise Exception("Cookies expired or invalid. Please re-export cookies.")
+                break
+
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            page_groups_found = 0
+
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                if '/groups/' in href:
+                    try:
+                        # Extract ID from /groups/12345/ or /groups/12345?ref=...
+                        parts = href.split('/groups/')
+                        if len(parts) > 1:
+                            group_id = parts[1].split('/')[0].split('?')[0]
+                            if group_id.isdigit() and group_id not in seen_ids:
+                                name = a.get_text().strip()
+                                if name:
+                                    groups.append({'id': group_id, 'name': name})
+                                    seen_ids.add(group_id)
+                                    page_groups_found += 1
+                    except Exception:
+                        continue
+            
+            # Pagination Logic: Find 'See more' link
+            next_link = soup.find('a', string=lambda t: t and "See more" in t.lower())
+            if next_link and next_link.has_attr('href'):
+                url = next_link['href']
+                if not url.startswith('http'):
+                    url = "https://mbasic.facebook.com" + url
+                time.sleep(random.uniform(1, 3)) # Polite delay
+            else:
+                url = None
         
         if not groups:
             raise Exception("No groups found via scraping.")
+        
+        print(f"✅ Scraped {len(groups)} groups via cookies.")
         return groups
 
     def post_images(self, group_id, image_paths, caption=None):
