@@ -50,15 +50,15 @@ class FacebookClient:
 
     def _scrape_groups_via_cookies(self):
         if not os.path.exists(self.cookie_file):
-            raise Exception("config/cookies.json not found. Please create it using the template.")
+            raise Exception("API failed and config/cookies.json not found. Please export cookies using EditThisCookie.")
 
         with open(self.cookie_file, 'r') as f:
             cookies_list = json.load(f)
         
         # VALIDATION: Check for placeholders
         for cookie in cookies_list:
-            if cookie.get('name') in ['c_user', 'xs'] and cookie.get('value') == "PASTE_VALUE_HERE":
-                raise Exception("Please open config/cookies.json and paste your 'c_user' and 'xs' cookies from Chrome.")
+            if cookie.get('value') == "PASTE_VALUE_HERE":
+                raise Exception("❌ CONFIG ERROR: You must open 'config/cookies.json' and replace 'PASTE_VALUE_HERE' with your actual 'c_user' and 'xs' cookie values from Chrome.")
 
         scrape_session = requests.Session()
         scrape_session.headers.update({
@@ -79,7 +79,7 @@ class FacebookClient:
             resp = scrape_session.get(url)
             if "login" in resp.url or resp.status_code != 200:
                 if not groups:
-                    raise Exception("Cookies expired or invalid. Please re-export cookies from Chrome.")
+                    raise Exception("Cookies expired or invalid. Please re-export cookies.")
                 break
 
             soup = BeautifulSoup(resp.text, 'html.parser')
