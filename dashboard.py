@@ -48,20 +48,17 @@ with col_fetch:
 
 selected_groups = []
 if st.session_state.groups_df is not None:
+    # MASS SELECTION UI
     c1, c2, c3 = st.columns([1, 1, 5])
-    
-    # MASS SELECTION LOGIC
     with c1:
         if st.button("✅ Select All"):
             st.session_state.groups_df['Select'] = True
-            # Force editor refresh by clearing its state
             if "groups_editor" in st.session_state:
                 del st.session_state["groups_editor"]
             st.rerun()
     with c2:
         if st.button("DW Deselect All"):
             st.session_state.groups_df['Select'] = False
-            # Force editor refresh by clearing its state
             if "groups_editor" in st.session_state:
                 del st.session_state["groups_editor"]
             st.rerun()
