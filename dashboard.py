@@ -15,6 +15,8 @@ if 'groups_df' not in st.session_state:
     st.session_state.groups_df = None
 if 'preview_confirmed' not in st.session_state:
     st.session_state.preview_confirmed = False
+if 'start_posting' not in st.session_state:
+    st.session_state.start_posting = False
 
 st.title("🤖 Facebook Group Auto-Poster")
 st.markdown("### Control Panel (WSL Edition)")
@@ -40,6 +42,7 @@ with col_fetch:
                         df = pd.DataFrame(groups)
                         df.insert(0, "Select", True)  # Default Select All
                         st.session_state.groups_df = df
+                        st.session_state.preview_confirmed = False
                         st.success(f"Loaded {len(groups)} groups.")
                     else:
                         st.error("No groups found.")
@@ -95,7 +98,7 @@ with col_preview:
             st.session_state.start_posting = True
 
 # --- STEP 3: EXECUTION ---
-if st.session_state.get('start_posting'):
+if st.session_state.start_posting:
     st.divider()
     st.subheader("3. Live Execution Log")
     log_area = st.empty()
