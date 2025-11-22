@@ -6,14 +6,16 @@ cd "$(dirname "$0")"
 
 # Check if venv exists
 if [ ! -d "venv" ]; then
-    echo "❌ Virtual environment not found. Please run './setup.sh' first."
+    echo "❌ Virtual environment not found!"
+    echo "👉 Please run './setup.sh' first."
     exit 1
 fi
 
-echo "🚀 Activating environment..."
+# Activate Virtual Environment
 source venv/bin/activate
 
-echo "qh Launching Dashboard..."
-echo "👉 If the browser does not open, copy the 'Local URL' below into your Windows browser."
+# Launch Dashboard
+echo "🚀 Launching Dashboard..."
+echo "👉 If the browser does not open, click the URL below (e.g., http://localhost:8501)"
 
-streamlit run dashboard.py
+streamlit run dashboard.py --server.headless true
