@@ -1,165 +1,105 @@
 import streamlit as st
 import pandas as pd
 import os
-import tempfile
 import time
 from dotenv import load_dotenv
 from facebook_client import FacebookClient
 
-st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
+# 3. FIX SYNTAX ERROR (Ensuring correct import)
 load_dotenv()
-default_token = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
 
-if 'groups_df' not in st.session_state:
-    st.session_state.groups_df = None
-if 'preview_confirmed' not in st.session_state:
-    st.session_state.preview_confirmed = False
+st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
 
-st.title("🤖 Facebook Group Auto-Poster")
-st.markdown("### Control Panel (WSL Edition)")
+st.title="🤖 Facebook Group Auto-Poster (CSV Mode)"
+st.markdown("### Control Panel")
 
-st.sidebar.header("Configuration")
-token = st.sidebar.text_input("Page Access Token", value=default_token, type="password")
+# --- CONFIGURATION ---
+st.sidebar.header="Configuration"
+# We still initialize the client for cookie loading, even if we don't use the API token for fetching groups
+client = FacebookClient()
 
-# --- STEP 1: FETCH GROUPS ---
-st.subheader("1. Target Groups")
-col_fetch, col_status = st.columns([1, 3])
-with col_fetch:
-    if st.button("🔄 Load Groups"):
-        if not token:
-            st.error("Token required!")
-        else:
-            try:
-                with st.spinner("Fetching groups (API + Cookie Fallback)..."):
-                    client = FacebookClient(token)
-                    groups = client.get_groups()
-                    if groups:
-                        df = pd.DataFrame(groups)
-                        df.insert(0, "Select", True)
-                        st.session_state.groups_df = df
-                        # Reset editor state to ensure new data loads cleanly
-                        if "groups_editor" in st.session_state:
-                            del st.session_state["groups_editor"]
-                        st.success(f"Loaded {len(groups)} groups.")
-                    else:
-                        st.error("No groups found.")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+# --- STEP 1: LOAD GROUPS FROM CSV ---
+st.subheader("1. Target Groups (Source: groups.csv)")
 
-selected_groups = []
-if st.session_state.groups_df is not None:
-    # MASS SELECTION UI
-    c1, c2, c3 = st.columns([1, 1, 5])
-    with c1:
-        if st.button("✅ Select All"):
-            st.session_state.groups_df['Select'] = True
-            if "groups_editor" in st.session_state:
-                del st.session_state["groups_editor"]
-            st.rerun()
-    with c2:
-        if st.button("DW Deselect All"):
-            st.session_state.groups_df['Select'] = False
-            if "groups_editor" in st.session_state:
-                del st.session_state["groups_editor"]
-            st.rerun()
+csv_file = "groups.csv"
+if not os.path.exists(csv_file):
+    st.error(f"❌ File '{csv_file}' not found. Please create it with columns: Select,id,name")
+    st.stop()
+
+try:
+    # Load CSV
+    df = pd.read_csv(csv_file)
+    # Ensure 'Select' is boolean for the checkbox UI
+    if 'Select' in df.columns:
+        df['Select'] = df['Select'].astype(bool)
+    else:
+        df['Select'] = True
     
+    # Display Data Editor
     edited_df = st.data_editor(
-        st.session_state.groups_df,
+        df,
         column_config={
             "Select": st.column_config.CheckboxColumn("Post?", help="Check to post to this group", required=True),
             "id": st.column_config.TextColumn("Group ID", disabled=True),
             "name": st.column_config.TextColumn("Group Name", disabled=True),
         },
-        disabled=["id", "name"],
         hide_index=True,
         use_container_width=True,
         height=300,
         key="groups_editor"
     )
-    # Sync changes back to session state
-    st.session_state.groups_df = edited_df
+    
+    # Save selection state back to CSV (Optional UX improvement)
+    # edited_df.to_csv(csv_file, index=False)
+    
     selected_groups = edited_df[edited_df["Select"]].to_dict('records')
     st.caption(f"✅ Target: {len(selected_groups)} groups selected.")
 
+except Exception as e:
+    st.error(f"Error reading CSV: {e}")
+    st.stop()
+
 st.divider()
 
-# --- STEP 2: CONTENT & PREVIEW ---
+# --- STEP 2: CONTENT ---
 st.subheader("2. Create Content")
-col_input, col_preview = st.columns([1, 1])
+caption = st.text_area("Post Caption", height=150, placeholder="Write your message here...")
+st.info("ℹ️ Note: mbasic mode currently supports text-only payloads to ensure high success rates.")
 
-with col_input:
-    uploaded_files = st.file_uploader("Upload Images (Multi-Select)", type=['jpg', 'png', 'jpeg'], accept_multiple_files=True)
-    caption = st.text_area("Post Caption", height=150, placeholder="Write your message here...")
-    
-    if st.button("👁️ Generate Preview"):
-        if not uploaded_files:
-            st.warning("Please upload at least one image.")
-        elif not selected_groups:
-            st.warning("Please select at least one group above.")
-        else:
-            st.session_state.preview_confirmed = True
+if st.button("🚀 CONFIRM & BLAST", type="primary"):
+    if not selected_groups:
+        st.warning("Please select at least one group.")
+    elif not caption:
+        st.warning("Please enter a caption.")
+    else:
+        st.divider()
+        st.subheader("3. Live Execution Log")
+        log_area = st.empty()
+        progress_bar = st.progress(0)
+        logs = []
 
-with col_preview:
-    if st.session_state.preview_confirmed:
-        st.info("👇 Safety Preview")
-        st.markdown(f"**Summary:** Posting to **{len(selected_groups)}** groups.")
-        st.markdown(f"**Caption:** {caption}")
-        st.markdown(f"**Images:** {[f.name for f in uploaded_files]}")
-        if uploaded_files:
-            st.image(uploaded_files, width=150)
-        st.warning("⚠️ Please confirm details above.")
-        if st.button("🚀 CONFIRM & BLAST", type="primary"):
-            st.session_state.start_posting = True
-
-# --- STEP 3: EXECUTION ---
-if st.session_state.get('start_posting'):
-    st.divider()
-    st.subheader("3. Live Execution Log")
-    log_area = st.empty()
-    progress_bar = st.progress(0)
-    logs = []
-
-    def log(message, link=None):
-        timestamp = time.strftime("%H:%M:%S")
-        if link:
-            logs.append(f"[{timestamp}] {message} -> [Verify Link]({link})")
-        else:
+        def log(message):
+            timestamp = time.strftime("%H:%M:%S")
             logs.append(f"[{timestamp}] {message}")
-        
-        if len(logs) > 15: logs.pop(0)
-        log_area.markdown("  \n".join(logs))
+            if len(logs) > 15: logs.pop(0)
+            log_area.markdown("  \n".join(logs))
 
-    temp_paths = []
-    for uf in uploaded_files:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            tmp.write(uf.getbuffer())
-            temp_paths.append(tmp.name)
-
-    try:
-        client = FacebookClient(token)
         total = len(selected_groups)
-        
         for i, group in enumerate(selected_groups):
-            log(f"bw Posting to: {group['name']} ({i+1}/{total})...")
+            log(f"bw Posting to: {group['name']}...")
             try:
-                link = client.post_images(group['id'], temp_paths, caption)
-                log(f"✅ Success: {group['name']}", link)
+                # 2. IMPLEMENT MBASIC POSTING CALL
+                result_url = client.post_via_mbasic(str(group['id']), caption)
+                if "view=permalink" in result_url or "groups" in result_url:
+                    log(f"✅ Success: {group['name']}")
+                else:
+                    log(f"❓ Unknown Result: {result_url}")
             except Exception as e:
-                log(f"❌ Failed: {group['name']} - {e}")
+                log(f"❌ Failed: {group['name']} - {str(e)}")
             
             progress_bar.progress((i + 1) / total)
             
             if i < total - 1:
-                wait_time = client.get_random_sleep()
-                log(f"⏳ Sleeping {wait_time}s...")
-                time.sleep(wait_time)
+                time.sleep(5) # Polite delay
         
         st.success("🎉 Batch Operation Complete!")
-        st.session_state.preview_confirmed = False
-        st.session_state.start_posting = False
-
-    except Exception as e:
-        st.error(f"Critical Error: {str(e)}")
-    finally:
-        for p in temp_paths:
-            if os.path.exists(p): os.remove(p)
