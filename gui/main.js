@@ -21,7 +21,7 @@ document.getElementById('startBtn').onclick = () => {
     const btn = document.getElementById('startBtn');
     btn.disabled = true;
     btn.innerText = 'Running...';
-    document.getElementById('logBox').textContent = ''; // Clear logs
+    btn.classList.add('disabled');
 
     ipcRenderer.send('start-post', { token, dirPath, manualText });
 };
@@ -32,12 +32,4 @@ ipcRenderer.on('log', (event, msg) => {
     const timestamp = new Date().toLocaleTimeString();
     logBox.textContent += `[${timestamp}] ${msg}\n`;
     logBox.scrollTop = logBox.scrollHeight;
-});
-
-// Handle Finish
-ipcRenderer.on('process-finished', () => {
-    const btn = document.getElementById('startBtn');
-    btn.disabled = false;
-    btn.innerText = 'Start Auto-Posting';
-    alert('Process Finished');
 });
