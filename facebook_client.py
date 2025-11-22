@@ -15,7 +15,8 @@ class FacebookClient:
         self._init_session()
 
     def _init_session(self):
-        """Initialize session with strict headers to bypass browser blocking."""
+        """Initialize session with headers and cookies."""
+        # MANDATORY HEADER CONFIGURATION for Samsung S23 Bypass
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -33,7 +34,7 @@ class FacebookClient:
                 with open(self.cookie_file, 'r') as f:
                     cookies_list = json.load(f)
                     for c in cookies_list:
-                        if c.get('value') and c.get('value') != "PASTE_VALUE_HERE":
+                        if c.get('value') != "PASTE_VALUE_HERE":
                             self.session.cookies.set(c['name'], c['value'], domain=c.get('domain', '.facebook.com'))
             except Exception as e:
                 print(f"[WARN] Failed to load cookies: {e}")
@@ -41,75 +42,74 @@ class FacebookClient:
     def post_via_mbasic(self, group_id, message):
         """
         Posts text to a group using mbasic.facebook.com simulation.
+        Bypasses Graph API 403 errors and 'Unsupported Browser' blocks.
         """
         if not os.path.exists(self.cookie_file):
             raise Exception("cookies.json missing! Cannot use mbasic fallback.")
 
-        # 1. Navigate to Group Page
+        # 1. Navigate to Group Page to get the form
         url = f"https://mbasic.facebook.com/groups/{group_id}"
         print(f"[MBASIC] Navigating to {url}...")
         resp = self.session.get(url)
         
-        # Check for block/interstitial
-        if "Facebook is not available on this browser" in resp.text or "Download Facebook Lite" in resp.text:
-             with open("debug_browser_block.html", "w", encoding="utf-8") as f:
-                f.write(resp.text)
-             raise Exception("Browser Blocked: Headers failed to bypass Lite interstitial. See debug_browser_block.html")
-
+        # Check for common blocks
         if 'login' in resp.url or 'checkpoint' in resp.url:
-            with open("debug_login_redirect.html", "w", encoding="utf-8") as f:
-                f.write(resp.text)
-            raise Exception("Cookies expired or checkpoint hit. See debug_login_redirect.html")
-
+            raise Exception("Cookies expired or checkpoint hit. Please refresh cookies.json")
+        
         soup = BeautifulSoup(resp.text, 'html.parser')
         
-        # 2. Find the Composer Form
-        # We look for the input named 'fb_dtsg' to confirm it's a valid form context
-        form = None
-        for f in soup.find_all('form'):
-            if f.find('input', {'name': 'fb_dtsg'}):
-                form = f
-                break
-        
-        if not form:
-            # Fallback: look for action containing composer
-            form = soup.find('form', action=re.compile(r'/composer/mbasic/'))
+        # Check if we are on the "Error" or "Unsupported Browser" page
+        page_title = soup.title.string if soup.title else "No Title"
+        if "Error" in page_title or "Facebook Lite" in resp.text:
+             # Log the specific error context
+             with open("debug_browser_block.html", "w", encoding="utf-8") as f:
+                f.write(resp.text)
+             raise Exception(f"Blocked by Facebook (Title: {page_title}). Headers may need rotation. Saved debug_browser_block.html")
 
+        # 2. Find the Composer Form
+        # Look for form with action containing '/composer/mbasic/'
+        form = soup.find('form', action=re.compile(r'/composer/mbasic/'))
         if not form:
+            # Debug: Save HTML to see what happened
             with open("debug_failed_form.html", "w", encoding="utf-8") as f:
                 f.write(resp.text)
-            raise Exception(f"Could not find post form in group {group_id}. Saved HTML to debug_failed_form.html")
+            raise Exception(f"Could not find post form on group page '{page_title}'. Check debug_failed_form.html")
 
-        # 3. Extract Hidden Inputs
+        # 3. Extract Hidden Inputs (fb_dtsg, jazoest, target, etc.)
         data = {}
-        for inp in form.find_all('input'):
-            if inp.get('name'):
-                data[inp.get('name')] = inp.get('value', '')
+        for inp in form.find_all('input', type='hidden'):
+            data[inp.get('name')] = inp.get('value')
+
+        # Verify critical tokens
+        if 'fb_dtsg' not in data:
+             with open("debug_missing_tokens.html", "w", encoding="utf-8") as f:
+                f.write(resp.text)
+             raise Exception("fb_dtsg token not found in form. Saved debug_missing_tokens.html")
 
         # 4. Add Message Payload
         data['xc_message'] = message
         data['view_post'] = 'Post'
+        
+        # Handle the submit button specifically if needed
+        submit_btn = form.find('input', type='submit')
+        if submit_btn and submit_btn.get('name'):
+            data[submit_btn.get('name')] = submit_btn.get('value')
 
         # 5. Submit POST
-        action = form.get('action')
-        if not action.startswith('http'):
-            action_url = "https://mbasic.facebook.com" + action
-        else:
-            action_url = action
-
+        action_url = "https://mbasic.facebook.com" + form['action']
         print(f"[MBASIC] Submitting to {action_url}...")
         
-        # Add Referer for the POST
+        # Update Referer for the POST request to match the group page
         self.session.headers.update({'Referer': url})
         
         post_resp = self.session.post(action_url, data=data)
-        
+        post_resp.raise_for_status()
+
         # 6. Validation
+        # Usually redirects to the group page or a permalink view
         if post_resp.status_code == 200:
             return f"https://www.facebook.com/groups/{group_id}"
         else:
-            with open("debug_post_fail.html", "w", encoding="utf-8") as f:
-                f.write(post_resp.text)
             raise Exception(f"Post failed with status {post_resp.status_code}")
 
     @staticmethod
