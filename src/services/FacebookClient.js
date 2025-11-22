@@ -33,12 +33,12 @@ class FacebookClient {
      */
     async getGroups() {
         let allGroups = [];
-        // FIX: Use absolute URL for the first call so the global axios instance can handle it.
+        // FIX: Use absolute URL for the first call so the global axios instance can handle it
         let nextUrl = `${this.baseUrl}/me/groups?fields=id,name,privacy&limit=50&access_token=${this.accessToken}`;
 
         try {
             while (nextUrl) {
-                // We use the global axios here because 'nextUrl' (from pagination) is always an absolute URL.
+                // Use raw axios for pagination URLs as they are absolute and provided by FB
                 const response = await axios.get(nextUrl);
                 
                 const data = response.data;
