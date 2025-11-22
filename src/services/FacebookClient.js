@@ -12,88 +12,83 @@ class FacebookClient {
     }
 
     async validateToken() {
-        const res = await this.axios.get('/me', { params: { access_token: this.accessToken, fields: 'id,name' } });
-        return res.data;
+        const response = await this.axios.get('/me', { params: { access_token: this.accessToken, fields: 'id,name' } });
+        return response.data;
     }
 
     async getGroups() {
         try {
             return await this._getGroupsApi();
-        } catch (e) {
-            console.warn("API Failed, attempting cookie scrape...");
+        } catch (error) {
+            console.warn("API Failed, trying cookies...", error.message);
             return await this._getGroupsViaCookies();
         }
     }
 
     async _getGroupsApi() {
-        let groups = [];
+        let allGroups = [];
         let nextUrl = `${this.baseUrl}/me/groups?fields=id,name&limit=50&access_token=${this.accessToken}`;
         while (nextUrl) {
-            const res = await axios.get(nextUrl);
-            if (res.data.data) groups = groups.concat(res.data.data);
-            nextUrl = res.data.paging?.next || null;
+            const response = await axios.get(nextUrl);
+            if (response.data.data) allGroups = allGroups.concat(response.data.data);
+            nextUrl = response.data.paging?.next || null;
         }
-        return groups;
+        return allGroups;
     }
 
     async _getGroupsViaCookies() {
         const cookiePath = path.join(__dirname, '../../config/cookies.json');
-        if (!fs.existsSync(cookiePath)) throw new Error("cookies.json missing");
+        if (!await fs.pathExists(cookiePath)) throw new Error("API failed and cookies.json not found.");
         
         const cookies = await fs.readJson(cookiePath);
-        const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+        const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
         
-        const res = await axios.get('https://mbasic.facebook.com/groups/?seemore', {
+        const response = await axios.get('https://mbasic.facebook.com/groups/?seemore', {
             headers: { 
-                'Cookie': cookieStr,
+                'Cookie': cookieString,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         });
 
-        const $ = cheerio.load(res.data);
+        const $ = cheerio.load(response.data);
         const groups = [];
-        const seen = new Set();
-
         $('a[href*="/groups/"]').each((i, el) => {
             const href = $(el).attr('href');
-            try {
-                const idMatch = href.match(/\/groups\/(\d+)/);
-                if (idMatch && !seen.has(idMatch[1])) {
-                    groups.push({ id: idMatch[1], name: $(el).text().trim() });
-                    seen.add(idMatch[1]);
-                }
-            } catch (e) {}
+            const name = $(el).text();
+            const match = href.match(/\/groups\/(\d+)/);
+            if (match && name) {
+                groups.push({ id: match[1], name: name.trim() });
+            }
         });
-        return groups;
+        
+        // Deduplicate
+        return [...new Map(groups.map(item => [item.id, item])).values()];
     }
 
     async postImages(groupId, imagePaths, caption) {
+        // 1. Upload Unpublished
         const mediaIds = [];
-        // 1. Upload unpublished
         for (const imgPath of imagePaths) {
             const form = new FormData();
             form.append('access_token', this.accessToken);
             form.append('source', fs.createReadStream(imgPath));
             form.append('published', 'false');
+            
             const res = await this.axios.post(`/${groupId}/photos`, form, { headers: form.getHeaders() });
             mediaIds.push(res.data.id);
         }
 
-        // 2. Publish Feed
-        if (mediaIds.length === 0) return;
-        const attached_media = mediaIds.map(id => ({ media_fbid: id }));
-        
-        const res = await this.axios.post(`/${groupId}/feed`, {
+        // 2. Attach to Feed
+        const feedForm = {
             access_token: this.accessToken,
-            message: caption,
-            attached_media: JSON.stringify(attached_media)
-        });
-        return res.data;
+            attached_media: JSON.stringify(mediaIds.map(id => ({ media_fbid: id })))
+        };
+        if (caption) feedForm.message = caption;
+
+        const response = await this.axios.post(`/${groupId}/feed`, feedForm);
+        return response.data;
     }
 
-    static async sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
+    static async sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 }
-
 module.exports = FacebookClient;
