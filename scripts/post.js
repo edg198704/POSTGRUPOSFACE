@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const FacebookClient = require('../src/services/FacebookClient');
-require('dotenv').config();
 
 let mainWindow;
 
@@ -15,7 +14,6 @@ function createWindow() {
             contextIsolation: false
         }
     });
-    // Load the GUI file
     mainWindow.loadFile(path.join(__dirname, '../gui/main.html'));
 }
 
@@ -46,11 +44,11 @@ ipcMain.on('start-post', async (event, { token, dirPath, manualText }) => {
 
         // 1. Fetch Groups
         sendLog('🔍 Fetching joined groups...');
-        const groups = await client.getGroups();
+        const groups = await client.getJoinedGroups();
         sendLog(`✅ Found ${groups.length} groups.`);
 
         if (groups.length === 0) {
-            return sendLog('⚠️ No groups found. Check permissions.');
+            return sendLog('⚠️ No groups found. Ensure the Page has joined groups.');
         }
 
         // 2. Load Content
@@ -69,6 +67,7 @@ ipcMain.on('start-post', async (event, { token, dirPath, manualText }) => {
             sendLog('mb Loaded description from description.txt');
         }
 
+        // Strategy: Post the first image found to all groups
         const imageToPost = path.join(dirPath, images[0]);
         sendLog(`📸 Selected Image: ${images[0]}`);
 
@@ -83,17 +82,19 @@ ipcMain.on('start-post', async (event, { token, dirPath, manualText }) => {
                 sendLog(`❌ Failed: ${err.message}`);
             }
 
-            // Safety Delay (20-40 seconds)
+            // Safety Delay (30-60 seconds) to avoid spam detection
             if (index < groups.length - 1) {
-                const delay = Math.floor(Math.random() * (40000 - 20000 + 1) + 20000);
+                const delay = Math.floor(Math.random() * (60000 - 30000 + 1) + 30000);
                 sendLog(`⏳ Waiting ${Math.round(delay/1000)}s to avoid rate limits...`);
                 await FacebookClient.sleep(delay);
             }
         }
 
         sendLog('🎉 Automation Cycle Complete!');
+        event.sender.send('process-finished');
 
     } catch (error) {
         sendLog(`🔥 Critical Error: ${error.message}`);
+        event.sender.send('process-finished');
     }
 });
