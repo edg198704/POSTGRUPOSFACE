@@ -3,7 +3,6 @@ import pandas as pd
 import os
 import tempfile
 import time
-fromqc = st.query_params
 from dotenv import load_dotenv
 from facebook_client import FacebookClient
 
@@ -46,7 +45,6 @@ with col_fetch:
 
 selected_groups = []
 if st.session_state.groups_df is not None:
-    # --- MASS SELECTION UI ---
     c1, c2, c3 = st.columns([1, 1, 5])
     with c1:
         if st.button("✅ Select All"):
@@ -98,10 +96,8 @@ with col_preview:
         st.markdown(f"**Summary:** Posting to **{len(selected_groups)}** groups.")
         st.markdown(f"**Caption:** {caption}")
         st.markdown(f"**Images:** {[f.name for f in uploaded_files]}")
-        
         if uploaded_files:
             st.image(uploaded_files, width=150)
-        
         st.warning("⚠️ Please confirm details above.")
         if st.button("🚀 CONFIRM & BLAST", type="primary"):
             st.session_state.start_posting = True
@@ -114,12 +110,16 @@ if st.session_state.get('start_posting'):
     progress_bar = st.progress(0)
     logs = []
 
-    def log(message):
+    def log(message, link=None):
         timestamp = time.strftime("%H:%M:%S")
-        logs.append(f"**[{timestamp}]** {message}")
-        # Keep last 20 logs, render as Markdown for links
-        if len(logs) > 20: logs.pop(0)
-        log_area.markdown("\n\n".join(logs))
+        if link:
+            logs.append(f"[{timestamp}] {message} -> [Verify Link]({link})")
+        else:
+            logs.append(f"[{timestamp}] {message}")
+        
+        if len(logs) > 15: logs.pop(0)
+        # Render as Markdown to support links
+        log_area.markdown("  \n".join(logs))
 
     temp_paths = []
     for uf in uploaded_files:
@@ -134,16 +134,9 @@ if st.session_state.get('start_posting'):
         for i, group in enumerate(selected_groups):
             log(f"bw Posting to: {group['name']} ({i+1}/{total})...")
             try:
-                # Returns dict with success, link, method
-                result = client.post_images(group['id'], temp_paths, caption)
-                
-                if result.get('success'):
-                    link = result.get('link', '#')
-                    method = result.get('method', 'API')
-                    log(f"✅ Success [{method}]: {group['name']} - [View Post]({link})")
-                else:
-                    log(f"❌ Failed: {group['name']} - Unknown Error")
-                    
+                # post_images now returns a link string
+                link = client.post_images(group['id'], temp_paths, caption)
+                log(f"✅ Success: {group['name']}", link)
             except Exception as e:
                 log(f"❌ Failed: {group['name']} - {e}")
             
