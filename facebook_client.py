@@ -59,11 +59,11 @@ class FacebookClient:
         # VALIDATION: Check for placeholders
         for cookie in cookies_list:
             if cookie.get('value') == "PASTE_VALUE_HERE":
-                raise Exception("❌ CONFIG ERROR: You must open 'config/cookies.json' and replace 'PASTE_VALUE_HERE' with your actual 'c_user' and 'xs' cookie values from Chrome.")
+                raise Exception("❌ CONFIG ERROR: You must open 'config/cookies.json' and replace 'PASTE_VALUE_HERE' with your actual 'c_user' and 'xs' cookie values.")
 
         scrape_session = requests.Session()
         
-        # 3. FIX HEADERS: Robust User-Agent and Headers
+        # Robust Headers
         scrape_session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -94,38 +94,29 @@ class FacebookClient:
                 print(f"Network error during scraping: {e}")
                 break
 
-            # 1. IMPROVED AUTH CHECK: Check Title
+            # 1. CHECK PAGE TITLE (Detect Login/Checkpoint)
             soup = BeautifulSoup(resp.text, 'html.parser')
-            page_title = soup.title.string.lower() if soup.title and soup.title.string else ""
+            page_title = soup.title.string.lower() if soup.title else ""
             
-            if any(x in page_title for x in ["log in", "entrar", "welcome", "checkpoint", "sign up"]):
+            if any(x in page_title for x in ['log in', 'entrar', 'welcome', 'checkpoint']):
                 with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
                     f.write(resp.text)
-                raise Exception("Cookies Invalid or Expired (Title Check Failed). Please update cookies.json.")
+                raise Exception("Cookies Invalid or Expired. Page title indicates login required. Please update cookies.json.")
 
-            # Check for login redirect or checkpoint in URL
-            if "login" in resp.url or "checkpoint" in resp.url:
-                with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
-                    f.write(resp.text)
-                raise Exception("Cookies expired or checkpoint hit. Raw HTML saved to 'debug_mbasic_response.html'.")
-
-            # 2. BROADEN SEARCH & REGEX UPDATE
-            # Scan all <a> tags for /groups/ID pattern
+            # 2. BROAD SCRAPING (All Links + Permissive Regex)
             links = soup.find_all('a', href=True)
             found_on_page = 0
             
             for a in links:
                 href = a['href']
                 # Regex to capture ID or Alias from /groups/ID/ or /groups/ID?refid...
-                # Matches numeric or alias IDs
                 match = re.search(r'/groups/([0-9]+|[^/?&"]+)', href)
                 if match:
                     group_id = match.group(1)
-                    # Exclude common non-group paths
-                    if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'zk']:
+                    # Filter system pages
+                    if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']:
                         continue
                     
-                    # Extract Name
                     name = a.get_text(strip=True) or "Unknown Group"
 
                     if group_id not in seen_ids:
@@ -135,48 +126,49 @@ class FacebookClient:
 
             print(f"   Found {found_on_page} groups on this page.")
 
-            # Pagination: Look for "See more"
+            # Pagination
             next_link = soup.find('a', string=lambda t: t and "See more" in t)
             if next_link and next_link.has_attr('href'):
                 url = next_link['href']
                 if not url.startswith('http'):
                     url = "https://mbasic.facebook.com" + url
-                time.sleep(random.uniform(2, 4)) # Polite delay
+                time.sleep(random.uniform(2, 4))
             else:
                 url = None
         
         # 3. MANUAL FALLBACK
         if not groups:
-            print("⚠️ Scraping returned 0 groups. Checking 'groups.txt' for manual fallback...")
+            print("⚠️ Scraping returned 0 groups. Falling back to 'groups.txt'...")
             if os.path.exists("groups.txt"):
-                try:
-                    with open("groups.txt", "r", encoding="utf-8") as f:
-                        lines = f.readlines()
-                    for line in lines:
-                        line = line.strip()
-                        if not line or line.startswith("#"): continue
-                        
-                        # Extract ID if it's a full URL
-                        match = re.search(r'/groups/([0-9]+|[^/?&"]+)', line)
-                        if match:
-                            g_id = match.group(1)
-                            groups.append({'id': g_id, 'name': f"Manual: {g_id}"})
-                        elif line.isdigit() or re.match(r'^[a-zA-Z0-9.]+$', line):
-                             groups.append({'id': line, 'name': f"Manual: {line}"})
-                except Exception as e:
-                    print(f"Error reading groups.txt: {e}")
-
+                with open("groups.txt", "r") as f:
+                    lines = f.readlines()
+                for line in lines:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    
+                    # Extract ID from URL or use raw ID
+                    url_match = re.search(r'/groups/([0-9]+|[^/?&"]+)', line)
+                    if url_match:
+                        manual_id = url_match.group(1)
+                    else:
+                        # Assume the whole line is an ID if it doesn't look like a URL
+                        manual_id = line.split('/')[-1] if '/' not in line else line
+                    
+                    if manual_id and manual_id not in seen_ids:
+                        groups.append({'id': manual_id, 'name': f"Manual: {manual_id}"})
+                        seen_ids.add(manual_id)
+            
             if groups:
-                print(f"✅ Loaded {len(groups)} groups from groups.txt fallback.")
+                print(f"✅ Loaded {len(groups)} groups from 'groups.txt'.")
             else:
-                # Dump debug if truly empty
+                # Dump debug if truly nothing found
                 if 'resp' in locals():
                     with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
                         f.write(resp.text)
-                print("❌ No groups found via scraping OR fallback.")
-                raise Exception("No groups found. Check 'debug_mbasic_response.html' or add links to 'groups.txt'.")
+                raise Exception("No groups found via scraping AND 'groups.txt' is empty/missing. Check 'debug_mbasic_response.html'.")
         
-        print(f"✅ Scraped {len(groups)} groups via cookies/fallback.")
+        print(f"✅ Total groups available: {len(groups)}")
         return groups
 
     def post_images(self, group_id, image_paths, caption=None):
