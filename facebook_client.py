@@ -3,6 +3,7 @@ import os
 import time
 import random
 import json
+import re
 from bs4 import BeautifulSoup
 
 class FacebookClient:
@@ -61,9 +62,12 @@ class FacebookClient:
                 raise Exception("❌ CONFIG ERROR: You must open 'config/cookies.json' and replace 'PASTE_VALUE_HERE' with your actual 'c_user' and 'xs' cookie values from Chrome.")
 
         scrape_session = requests.Session()
+        # FIX: Add robust User-Agent to prevent blocking
         scrape_session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://mbasic.facebook.com/'
         })
 
         for cookie in cookies_list:
@@ -72,45 +76,73 @@ class FacebookClient:
         url = "https://mbasic.facebook.com/groups/?seemore"
         groups = []
         seen_ids = set()
+        
+        # FIX: Regex pattern to extract Group ID or Alias from URL
+        # Matches /groups/12345/ or /groups/some.alias/
+        group_pattern = re.compile(r'/groups/([^/?#]+)')
 
         print("⏳ Starting Cookie Scrape...")
 
         while url:
-            resp = scrape_session.get(url)
-            if "login" in resp.url or resp.status_code != 200:
-                if not groups:
-                    raise Exception("Cookies expired or invalid. Please re-export cookies.")
+            try:
+                resp = scrape_session.get(url, timeout=30)
+            except Exception as e:
+                print(f"❌ Network error: {e}")
                 break
 
-            soup = BeautifulSoup(resp.text, 'html.parser')
+            # Check if redirected to login (cookies invalid)
+            if "login" in resp.url or "Mw==" in resp.text: # Mw== is often in login page source
+                if not groups:
+                    # Dump HTML for debugging
+                    with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
+                        f.write(resp.text)
+                    raise Exception("Cookies expired or invalid (Redirected to Login). HTML saved to debug_mbasic_response.html")
+                break
+
+            # Use lxml if available, else html.parser
+            try:
+                soup = BeautifulSoup(resp.text, 'lxml')
+            except:
+                soup = BeautifulSoup(resp.text, 'html.parser')
             
-            # Find all group links
-            for a in soup.find_all('a', href=True):
+            # FIX: Scan ALL <a> tags using Regex
+            links = soup.find_all('a', href=True)
+            found_on_page = False
+            
+            for a in links:
                 href = a['href']
-                if '/groups/' in href:
-                    try:
-                        parts = href.split('/groups/')
-                        if len(parts) > 1:
-                            id_part = parts[1].split('/')[0].split('?')[0]
-                            if id_part.isdigit() and id_part not in seen_ids:
-                                name = a.get_text().strip()
-                                if name:
-                                    groups.append({'id': id_part, 'name': name})
-                                    seen_ids.add(id_part)
-                    except Exception:
+                match = group_pattern.search(href)
+                if match:
+                    group_id = match.group(1)
+                    
+                    # Filter out system links that might match the pattern
+                    if group_id.lower() in ['create', 'category', 'joingroups', 'discover', 'search']:
                         continue
+                        
+                    if group_id not in seen_ids:
+                        name = a.get_text().strip()
+                        if name:
+                            groups.append({'id': group_id, 'name': name})
+                            seen_ids.add(group_id)
+                            found_on_page = True
             
+            # Pagination: Look for "See more"
             next_link = soup.find('a', string=lambda t: t and "See more" in t)
             if next_link and next_link.has_attr('href'):
                 url = next_link['href']
                 if not url.startswith('http'):
                     url = "https://mbasic.facebook.com" + url
-                time.sleep(random.uniform(1, 2))
+                time.sleep(random.uniform(1.5, 3.0)) # Polite delay
             else:
                 url = None
         
         if not groups:
-            raise Exception("No groups found via scraping. Check cookie validity.")
+            # FIX: Mandatory HTML Dump on failure
+            with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
+                f.write(resp.text)
+            print("❌ No groups found. Raw HTML saved to 'debug_mbasic_response.html'.")
+            print("👉 Please open this file in a browser to check if you are logged in or blocked.")
+            raise Exception("No groups found via scraping. Check debug_mbasic_response.html")
         
         print(f"✅ Scraped {len(groups)} groups via cookies.")
         return groups
