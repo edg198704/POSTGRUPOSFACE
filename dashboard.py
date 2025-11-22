@@ -1,0 +1,91 @@
+import streamlit as st
+import os
+from dotenv import load_dotenv
+from facebook_client import FacebookClient
+import time
+
+# Page Config
+st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
+
+# Load Env
+load_dotenv()
+default_token = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
+
+st.title("🤖 Facebook Group Auto-Poster")
+st.markdown("Control panel for automating posts to all your Facebook Groups.")
+
+# Sidebar: Configuration
+st.sidebar.header("Configuration")
+token = st.sidebar.text_input("Page Access Token", value=default_token, type="password")
+
+# Main Area
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("1. Content Settings")
+    uploaded_file = st.file_uploader("Upload Image", type=['jpg', 'png', 'jpeg'])
+    caption = st.text_area("Post Caption", height=150, placeholder="Enter your message here...")
+    
+    start_btn = st.button("🚀 Start Posting", type="primary", use_container_width=True)
+
+with col2:
+    st.subheader("2. Live Logs")
+    log_area = st.empty()
+    logs = []
+
+    def log(message):
+        timestamp = time.strftime("%H:%M:%S")
+        logs.append(f"[{timestamp}] {message}")
+        log_area.code("\n".join(logs), language="text")
+
+# Logic
+if start_btn:
+    if not token:
+        st.error("❌ Error: Access Token is missing.")
+    elif not uploaded_file:
+        st.error("❌ Error: Please upload an image.")
+    else:
+        try:
+            # Save temp image
+            temp_path = f"temp_{uploaded_file.name}"
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            client = FacebookClient(token)
+            
+            log("🔐 Validating Token...")
+            me = client.validate_token()
+            log(f"✅ Authenticated as: {me.get('name')} ({me.get('id')})")
+            
+            log("🔍 Fetching Groups...")
+            groups = client.get_groups()
+            log(f"✅ Found {len(groups)} groups.")
+            
+            if not groups:
+                st.warning("⚠️ No groups found.")
+            else:
+                progress_bar = st.progress(0)
+                for i, group in enumerate(groups):
+                    log(f"posting to: {group['name']}...")
+                    try:
+                        client.post_photo(group['id'], temp_path, caption)
+                        log(f"✅ Success: {group['name']}")
+                    except Exception as e:
+                        log(f"❌ Failed: {group['name']} - {e}")
+                    
+                    # Update Progress
+                    progress_bar.progress((i + 1) / len(groups))
+                    
+                    # Delay if not last
+                    if i < len(groups) - 1:
+                        log("⏳ Waiting to avoid rate limits...")
+                        client.sleep_random(30, 60)
+                
+                st.success("🎉 All posts completed!")
+                
+            # Cleanup
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+        except Exception as e:
+            st.error(f"Critical Error: {str(e)}")
