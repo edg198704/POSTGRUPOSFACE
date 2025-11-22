@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <title>Facebook Group Auto-Poster</title>
 <link rel="stylesheet" href="style.css">
+<style>
+  #previewContainer { display: none; margin-top: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; }
+  .preview-grid { display: flex; gap: 5px; flex-wrap: wrap; }
+  .preview-grid img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; }
+</style>
 </head>
 <body>
   <div class="container">
@@ -11,25 +16,27 @@
     
     <div class="input-group">
         <label>Page Access Token:</label>
-        <input type="password" id="accessToken" placeholder="EAA... (Paste Token or set FB_PAGE_TOKEN in .env)" />
-        <small style="color:#666;">Leave blank if defined in .env file.</small>
+        <input type="password" id="accessToken" placeholder="EAA..." />
     </div>
 
     <div class="input-group">
-        <label>Content Directory (Images + description.txt):</label>
-        <div style="display:flex; gap:10px;">
-            <input type="text" id="dirPath" readonly placeholder="No directory selected" />
-            <button id="selectDirBtn" style="width:auto;">Select Folder</button>
-        </div>
-        <small style="color:#666;">Bot will use the first image found and description.txt if present.</small>
+        <label>Select Images (Multiple):</label>
+        <input type="file" id="imageInput" multiple accept="image/*" />
     </div>
 
     <div class="input-group">
-        <label>Fallback Description (if no file found):</label>
+        <label>Post Caption:</label>
         <textarea id="postText" placeholder="Enter your post caption here..."></textarea>
     </div>
 
-    <button id="startBtn" class="primary-btn">Start Auto-Posting</button>
+    <div id="previewContainer">
+        <h4>Preview</h4>
+        <p id="previewCaption"></p>
+        <div class="preview-grid" id="previewGrid"></div>
+    </div>
+
+    <button id="previewBtn" class="primary-btn" style="background:#42b72a; margin-bottom:5px;">Show Preview</button>
+    <button id="startBtn" class="primary-btn" disabled>Confirm & Start Posting</button>
     
     <div class="log-container">
         <label>Process Log:</label>
