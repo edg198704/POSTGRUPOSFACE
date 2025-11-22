@@ -2,7 +2,7 @@
 set -e
 
 echo "=================================="
-jh="   FB Auto Poster - WSL Setup"
+echo "   FB Auto Poster - WSL Setup"
 echo "=================================="
 
 # 1. Check and Install System Dependencies (WSL/Ubuntu)
@@ -22,13 +22,6 @@ fi
 if ! dpkg -s python3-venv &> /dev/null; then
     echo "📦 Installing python3-venv..."
     sudo apt-get install -y python3-venv
-fi
-
-# Check Node.js (Optional check as requested)
-if ! command -v node &> /dev/null; then
-    echo "⚠️  Node.js not found (Optional, skipping as we use Python Dashboard)."
-else
-    echo "✅ Node.js detected."
 fi
 
 # 2. Create Virtual Environment
