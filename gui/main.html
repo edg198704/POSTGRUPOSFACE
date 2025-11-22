@@ -2,15 +2,38 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Auto Post Facebook GUI</title>
+<title>Meta Page Auto-Poster</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h2>Auto Post Facebook</h2>
-  <textarea id="postText" placeholder="Escribe tu mensaje aquí..."></textarea>
-  <input type="file" id="imageFile" accept="image/*"/>
-  <button id="startBtn">Publicar en todos mis grupos</button>
-  <pre id="logBox"></pre>
+  <div class="container">
+    <h2>🤖 Facebook Page Group Poster</h2>
+    
+    <div class="input-group">
+        <label>Page Access Token (Keep Secret)</label>
+        <input type="password" id="accessToken" placeholder="EAA..." />
+    </div>
+
+    <div class="input-group">
+        <label>Post Message</label>
+        <textarea id="postText" placeholder="Enter your post description here..."></textarea>
+    </div>
+
+    <div class="input-group">
+        <label>Image (Optional)</label>
+        <div style="display:flex; gap:10px;">
+            <button id="selectImgBtn">Select Image</button>
+            <span id="filePathDisplay">No file selected</span>
+        </div>
+    </div>
+
+    <button id="startBtn" class="primary-btn">🚀 Launch Auto-Post</button>
+    
+    <div class="log-container">
+        <h3>Execution Logs</h3>
+        <pre id="logBox"></pre>
+    </div>
+  </div>
   <script src="main.js"></script>
 </body>
 </html>
