@@ -3,15 +3,14 @@ import os
 import time
 import random
 import json
-frombs4 import BeautifulSoup
+from bs4 import BeautifulSoup
 
 class FacebookClient:
     def __init__(self, access_token):
         self.access_token = access_token
         self.base_url = "https://graph.facebook.com/v19.0"
         self.session = requests.Session()
-        # Ensure correct path to cookies
-        self.cookie_file = os.path.join(os.getcwd(), "config", "cookies.json")
+        self.cookie_file = "config/cookies.json"
 
     def validate_token(self):
         try:
@@ -23,17 +22,22 @@ class FacebookClient:
             raise Exception(f"Token Validation Failed: {str(e)}")
 
     def get_groups(self):
+        """Try API first, fallback to Cookies if API fails."""
         try:
-            # Try API First
+            print("Attempting to fetch groups via API...")
             return self._get_groups_api()
         except Exception as e:
-            print(f"[WARN] API Failed: {e}. Switching to Cookie Scraper.")
+            print(f"[WARN] Graph API failed ({str(e)}). Switching to Cookie Scraping...")
             return self._scrape_groups_via_cookies()
 
     def _get_groups_api(self):
         groups = []
         url = f"{self.base_url}/me/groups"
-        params = {'access_token': self.access_token, 'limit': '50', 'fields': 'id,name'}
+        params = {
+            'access_token': self.access_token,
+            'fields': 'id,name,privacy',
+            'limit': '50'
+        }
         while url:
             resp = self.session.get(url, params=params if 'access_token' not in url else None)
             resp.raise_for_status()
@@ -46,7 +50,7 @@ class FacebookClient:
 
     def _scrape_groups_via_cookies(self):
         if not os.path.exists(self.cookie_file):
-            raise Exception(f"Cookies file not found at {self.cookie_file}. Please export cookies to this file.")
+            raise Exception("API failed and config/cookies.json not found. Please export cookies using EditThisCookie.")
 
         with open(self.cookie_file, 'r') as f:
             cookies_list = json.load(f)
@@ -64,51 +68,69 @@ class FacebookClient:
         groups = []
         seen_ids = set()
 
+        print("⏳ Starting Cookie Scrape...")
+
         while url:
             resp = scrape_session.get(url)
-            if "login" in resp.url:
-                raise Exception("Cookies expired. Please re-export cookies.json")
-            
+            if "login" in resp.url or resp.status_code != 200:
+                if not groups:
+                    raise Exception("Cookies expired or invalid. Please re-export cookies.")
+                break
+
             soup = BeautifulSoup(resp.text, 'html.parser')
             
-            # Parse Groups
+            # Find all group links
             for a in soup.find_all('a', href=True):
                 href = a['href']
+                # mbasic links usually look like /groups/123456/?refid=...
                 if '/groups/' in href:
-                    # Extract ID from /groups/12345/ or /groups/12345?ref=...
                     try:
-                        parts = href.split('/groups/')[1].split('/')[0].split('?')[0]
-                        if parts.isdigit() and parts not in seen_ids:
-                            groups.append({'id': parts, 'name': a.get_text().strip()})
-                            seen_ids.add(parts)
-                    except:
-                        pass
+                        # Extract ID safely
+                        parts = href.split('/groups/')
+                        if len(parts) > 1:
+                            # Get the part after /groups/
+                            id_part = parts[1].split('/')[0].split('?')[0]
+                            
+                            if id_part.isdigit() and id_part not in seen_ids:
+                                name = a.get_text().strip()
+                                if name:
+                                    groups.append({'id': id_part, 'name': name})
+                                    seen_ids.add(id_part)
+                    except Exception:
+                        continue
             
             # Pagination: Find 'See more' link
-            next_a = soup.find('a', string=lambda t: t and "See more" in t)
-            if next_a:
-                url = next_a['href']
+            next_link = soup.find('a', string=lambda t: t and "See more" in t)
+            if next_link and next_link.has_attr('href'):
+                url = next_link['href']
                 if not url.startswith('http'):
                     url = "https://mbasic.facebook.com" + url
                 time.sleep(random.uniform(1, 2))
             else:
                 url = None
-                
+        
+        if not groups:
+            raise Exception("No groups found via scraping. Check cookie validity.")
+        
+        print(f"✅ Scraped {len(groups)} groups via cookies.")
         return groups
 
     def post_images(self, group_id, image_paths, caption=None):
-        # 1. Upload Unpublished Photos to get IDs
+        # 1. Upload photos as unpublished (published=false) to get media IDs
         media_ids = []
         for img_path in image_paths:
             url = f"{self.base_url}/{group_id}/photos"
-            with open(img_path, 'rb') as f:
-                files = {'source': f}
-                data = {'access_token': self.access_token, 'published': 'false'}
+            with open(img_path, 'rb') as img_file:
+                files = {'source': img_file}
+                data = {
+                    'access_token': self.access_token,
+                    'published': 'false'
+                }
                 resp = self.session.post(url, data=data, files=files)
                 resp.raise_for_status()
                 media_ids.append(resp.json()['id'])
         
-        # 2. Publish Feed Post with Attachments
+        # 2. Publish to Feed with attached_media
         feed_url = f"{self.base_url}/{group_id}/feed"
         feed_data = {
             'access_token': self.access_token,
@@ -121,7 +143,6 @@ class FacebookClient:
         resp.raise_for_status()
         return resp.json()
 
-    def sleep_random(self, min_s=30, max_s=60):
-        s = random.randint(min_s, max_s)
-        time.sleep(s)
-        return s
+    @staticmethod
+    def get_random_sleep(min_sec=30, max_sec=90):
+        return random.randint(min_sec, max_sec)
