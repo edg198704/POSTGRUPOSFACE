@@ -7,14 +7,14 @@ echo "=================================="
 
 # 1. Check Python
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python3 not found. Please run: sudo apt update && sudo apt install python3 python3-venv -y"
+    echo "❌ Python3 not found. Please run: sudo apt update && sudo apt install python3 -y"
     exit 1
 fi
 
-# 2. Check Venv Module (Critical for WSL)
+# 2. Check for venv module (Common issue in WSL/Ubuntu)
 if ! python3 -c "import venv" &> /dev/null; then
     echo "❌ Python venv module not found."
-    echo "👉 Please run: sudo apt install python3-venv -y"
+    echo "👉 Please run: sudo apt update && sudo apt install python3-venv -y"
     exit 1
 fi
 
@@ -32,20 +32,10 @@ source venv/bin/activate
 pip install --upgrade pip > /dev/null
 pip install -r requirements.txt
 
-# 5. Streamlit Config (Suppress Email Prompt)
-if [ ! -f ".streamlit/config.toml" ]; then
-    echo "⚙️  Configuring Streamlit..."
-    mkdir -p .streamlit
-    echo "[browser]
-gatherUsageStats = false
-[server]
-headless = true" > .streamlit/config.toml
-fi
-
-# 6. Generate .env if missing
+# 5. Generate .env if missing
 if [ ! -f ".env" ]; then
     echo "cF Creating .env file..."
-    echo "FACEBOOK_ACCESS_TOKEN=REPLACE_ME" > .env
+    echo "FACEBOOK_ACCESS_TOKEN=" > .env
     echo "✅ .env created."
 else
     echo "✅ .env found."
