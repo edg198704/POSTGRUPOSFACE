@@ -1,63 +1,80 @@
-const { ipcMain } = require('electron');
-const { chromium } = require('playwright');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs-extra');
+require('dotenv').config();
+const FacebookClient = require('../src/services/FacebookClient');
 
-ipcMain.on('publicar', async (event, data) => {
-    const browser = await chromium.launch({ headless: false });
-    const page = await browser.newPage();
+let mainWindow;
 
-    // Cargar cookies
-    const cookiesPath = path.resolve(__dirname, '../config/cookies.json');
-    if(fs.existsSync(cookiesPath)){
-        const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf-8'));
-        await page.context().addCookies(cookies);
-    }
-
-    // Ir a la página principal
-    await page.goto('https://www.facebook.com/');
-    await page.waitForTimeout(5000); // esperar login
-
-    // Scraping de grupos de la página
-    console.log("Obteniendo grupos automáticamente...");
-    await page.goto('https://www.facebook.com/me/groups'); // página de grupos de la cuenta/página
-    await page.waitForTimeout(5000);
-
-    const grupos = await page.$$eval('a[href*="/groups/"]', links => {
-        const ids = [];
-        links.forEach(l => {
-            const match = l.href.match(/\/groups\/(\d+)/);
-            if(match) ids.push(match[1]);
-        });
-        return [...new Set(ids)]; // quitar duplicados
+function createWindow() {
+    mainWindow = new BrowserWindow({
+        width: 900,
+        height: 700,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false // Allowed for internal automation tools
+        }
     });
 
-    console.log("Grupos encontrados:", grupos);
+    mainWindow.loadFile(path.join(__dirname, '../gui/main.html'));
+}
 
-    for(const grupo of grupos){
-        try{
-            await page.goto(`https://www.facebook.com/groups/${grupo}`);
-            await page.waitForSelector('div[aria-label="Crear publicación"]', {timeout:15000});
-            await page.click('div[aria-label="Crear publicación"]');
+app.whenReady().then(createWindow);
 
-            const textareaSelector = 'div[aria-label="Escribe algo..."]';
-            await page.waitForSelector(textareaSelector);
-            await page.type(textareaSelector, data.texto, { delay: 20 });
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+});
 
-            if(data.fotos.length>0){
-                const inputFile = await page.$('input[type=file]');
-                await inputFile.setInputFiles(data.fotos.map(f => path.resolve(f)));
+// --- Automation Logic ---
+
+ipcMain.on('start-post', async (event, config) => {
+    const { token, message, imagePath } = config;
+    const sender = event.sender;
+
+    sender.send('log', '🚀 Initializing Facebook Graph API Client...');
+
+    try {
+        const fb = new FacebookClient(token);
+        
+        sender.send('log', '🔍 Scanning for Groups...');
+        const groups = await fb.getPageGroups();
+        sender.send('log', `✅ Found ${groups.length} groups.`);
+
+        if (groups.length === 0) {
+            sender.send('log', '⚠️ No groups found. Ensure the Page is a member of groups.');
+            return;
+        }
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const [index, group] of groups.entries()) {
+            sender.send('log', `⏳ [${index + 1}/${groups.length}] Posting to: ${group.name}...`);
+            
+            try {
+                await fb.postToGroup(group.id, message, imagePath);
+                sender.send('log', `✅ Success: ${group.name}`);
+                successCount++;
+            } catch (err) {
+                sender.send('log', `❌ Failed: ${group.name} - ${err.message}`);
+                failCount++;
             }
 
-            const botonPublicar = 'div[aria-label="Publicar"]';
-            await page.click(botonPublicar);
-            console.log(`Publicado en grupo ${grupo}`);
-            await page.waitForTimeout(5000);
-        } catch(e){
-            console.log(`Error publicando en grupo ${grupo}: ${e}`);
+            // Safety Delay (Rate Limiting)
+            const delay = Math.floor(Math.random() * 5000) + 5000; // 5-10 seconds
+            sender.send('log', `zzZ Sleeping for ${delay/1000}s...`);
+            await FacebookClient.sleep(delay);
         }
-    }
 
-    await browser.close();
-    console.log("Todas las publicaciones completadas ✅");
+        sender.send('log', `🏁 Operation Complete. Success: ${successCount}, Failed: ${failCount}`);
+
+    } catch (error) {
+        sender.send('log', `⛔CRITICAL ERROR: ${error.message}`);
+    }
+});
+
+// Helper to select file via native dialog if needed
+ipcMain.handle('select-file', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'png', 'jpeg'] }] });
+    return result.filePaths[0];
 });
