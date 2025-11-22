@@ -8,6 +8,7 @@ echo "=================================="
 # 1. Check and Install System Dependencies (WSL/Ubuntu)
 echo "🔍 Checking system requirements..."
 
+# Ensure package lists are updated to avoid 404s
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python3 not found. Installing..."
     sudo apt-get update && sudo apt-get install -y python3
@@ -34,13 +35,13 @@ fi
 
 # 3. Install Python Dependencies
 echo "⬇️  Installing Python dependencies inside venv..."
-source venv/bin/activate
+. venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
 # 4. Generate .env Configuration
 if [ ! -f ".env" ]; then
-    echo "cF Creating .env file..."
+    echo "mz Creating .env file..."
     # Create file with placeholder
     cat <<EOF > .env
 FACEBOOK_ACCESS_TOKEN=REPLACE_ME
