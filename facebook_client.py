@@ -94,16 +94,22 @@ class FacebookClient:
                 print(f"Network error during scraping: {e}")
                 break
 
-            # Check for login redirect or checkpoint
+            # 1. IMPROVED AUTH CHECK: Check Title
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            page_title = soup.title.string.lower() if soup.title and soup.title.string else ""
+            
+            if any(x in page_title for x in ["log in", "entrar", "welcome", "checkpoint", "sign up"]):
+                with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
+                    f.write(resp.text)
+                raise Exception("Cookies Invalid or Expired (Title Check Failed). Please update cookies.json.")
+
+            # Check for login redirect or checkpoint in URL
             if "login" in resp.url or "checkpoint" in resp.url:
-                # 2. ADD DEBUGGING (HTML Dump)
                 with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
                     f.write(resp.text)
                 raise Exception("Cookies expired or checkpoint hit. Raw HTML saved to 'debug_mbasic_response.html'.")
 
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            
-            # 1. IMPLEMENT ROBUST SCRAPING (Regex > CSS)
+            # 2. BROADEN SEARCH & REGEX UPDATE
             # Scan all <a> tags for /groups/ID pattern
             links = soup.find_all('a', href=True)
             found_on_page = 0
@@ -111,17 +117,16 @@ class FacebookClient:
             for a in links:
                 href = a['href']
                 # Regex to capture ID or Alias from /groups/ID/ or /groups/ID?refid...
-                # Exclude 'create', 'category', 'join'
-                match = re.search(r'/groups/([^/?&]+)', href)
+                # Matches numeric or alias IDs
+                match = re.search(r'/groups/([0-9]+|[^/?&"]+)', href)
                 if match:
                     group_id = match.group(1)
-                    if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category']:
+                    # Exclude common non-group paths
+                    if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'zk']:
                         continue
                     
                     # Extract Name
-                    name = a.get_text(strip=True)
-                    if not name: 
-                        continue
+                    name = a.get_text(strip=True) or "Unknown Group"
 
                     if group_id not in seen_ids:
                         groups.append({'id': group_id, 'name': name})
@@ -140,15 +145,38 @@ class FacebookClient:
             else:
                 url = None
         
+        # 3. MANUAL FALLBACK
         if not groups:
-            # 2. ADD DEBUGGING (HTML Dump) - Save if 0 groups
-            if 'resp' in locals():
-                with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
-                    f.write(resp.text)
-            print("❌ No groups found. Raw HTML saved to 'debug_mbasic_response.html'.")
-            raise Exception("No groups found via scraping. Check 'debug_mbasic_response.html' to see if you are logged in.")
+            print("⚠️ Scraping returned 0 groups. Checking 'groups.txt' for manual fallback...")
+            if os.path.exists("groups.txt"):
+                try:
+                    with open("groups.txt", "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    for line in lines:
+                        line = line.strip()
+                        if not line or line.startswith("#"): continue
+                        
+                        # Extract ID if it's a full URL
+                        match = re.search(r'/groups/([0-9]+|[^/?&"]+)', line)
+                        if match:
+                            g_id = match.group(1)
+                            groups.append({'id': g_id, 'name': f"Manual: {g_id}"})
+                        elif line.isdigit() or re.match(r'^[a-zA-Z0-9.]+$', line):
+                             groups.append({'id': line, 'name': f"Manual: {line}"})
+                except Exception as e:
+                    print(f"Error reading groups.txt: {e}")
+
+            if groups:
+                print(f"✅ Loaded {len(groups)} groups from groups.txt fallback.")
+            else:
+                # Dump debug if truly empty
+                if 'resp' in locals():
+                    with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
+                        f.write(resp.text)
+                print("❌ No groups found via scraping OR fallback.")
+                raise Exception("No groups found. Check 'debug_mbasic_response.html' or add links to 'groups.txt'.")
         
-        print(f"✅ Scraped {len(groups)} groups via cookies.")
+        print(f"✅ Scraped {len(groups)} groups via cookies/fallback.")
         return groups
 
     def post_images(self, group_id, image_paths, caption=None):
