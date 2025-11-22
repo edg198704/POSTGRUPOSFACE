@@ -110,7 +110,7 @@ class FacebookClient:
                     f.write(resp.text)
                 raise Exception("Cookies Invalid or Expired. Page title indicates login required. Please update cookies.json.")
 
-            # 3. ROBUST REGEX & PARSING
+            # 3. ROBUST REGEX & PARSING (MBASIC)
             links = soup.find_all('a', href=True)
             found_on_page = 0
             
@@ -153,27 +153,24 @@ class FacebookClient:
                         html_content = f.read()
                     
                     # Universal Regex for Desktop & Mobile (Absolute & Relative)
-                    # Captures numeric IDs from:
-                    # - https://www.facebook.com/groups/12345/
-                    # - /groups/12345/
-                    regex_pattern = r'(?:facebook\.com\/groups\/|\/groups\/)([0-9]+)'
+                    # Matches: facebook.com/groups/12345 OR /groups/12345
+                    # Captures the ID part (Numeric or Vanity)
+                    regex_pattern = r'(?:facebook\.com\/groups\/|\/groups\/)([a-zA-Z0-9._-]+)'
+                    raw_matches = re.findall(regex_pattern, html_content)
                     
-                    found_ids = re.findall(regex_pattern, html_content)
-                    unique_local_groups = 0
+                    ignore_list = {'create', 'search', 'joines', 'feed', 'category', 'discover', 'joins', 'about', 'members'}
                     
-                    for group_id in found_ids:
-                        # Filter Blocklist
-                        if any(kw in group_id for kw in ['create', 'discover', 'category', 'feed']):
-                            continue
-                            
-                        if group_id not in seen_ids:
-                            # Since we are using raw regex, we don't have the group name.
-                            # We use a generic name to ensure the ID is captured.
-                            groups.append({'id': group_id, 'name': f"Facebook Group {group_id}"})
-                            seen_ids.add(group_id)
-                            unique_local_groups += 1
-                            
-                    print(f"✅ Loaded {unique_local_groups} groups from 'my_groups.html'.")
+                    for group_id in raw_matches:
+                        # Clean potential trailing chars
+                        clean_id = group_id.strip('/')
+                        
+                        if clean_id.lower() not in ignore_list and clean_id not in seen_ids:
+                            # Heuristic: IDs are usually numeric or specific vanity strings
+                            if len(clean_id) > 2:
+                                groups.append({'id': clean_id, 'name': f"Group {clean_id}"})
+                                seen_ids.add(clean_id)
+                                
+                    print(f"✅ Loaded {len(groups)} groups from 'my_groups.html'.")
                 except Exception as e:
                     print(f"❌ Error parsing 'my_groups.html': {e}")
             else:
@@ -194,7 +191,7 @@ class FacebookClient:
                     if url_match:
                         manual_id = url_match.group(1)
                     else:
-                        manual_id = line.split('/')[-1] if '/' not in line else line
+                        manual_id = line.split('/')[-1] if '/' in line else line
                     
                     if manual_id and manual_id not in seen_ids:
                         groups.append({'id': manual_id, 'name': f"Manual: {manual_id}"})
