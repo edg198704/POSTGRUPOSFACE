@@ -49,30 +49,6 @@ class FacebookClient:
             params = None
         return groups
 
-    def _extract_groups_from_html(self, html_content):
-        """Robust parsing for both mbasic and desktop HTML."""
-        soup = BeautifulSoup(html_content, 'html.parser')
-        groups = []
-        seen_ids = set()
-        
-        # Look for anchor tags with href containing groups
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            # Regex for both relative and absolute URLs
-            # Matches: /groups/123, facebook.com/groups/123, etc.
-            match = re.search(r'(?:facebook\.com\/groups\/|\/groups\/)([^/?&"]+)', href)
-            if match:
-                group_id = match.group(1)
-                # Filter out common non-group links
-                if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover', 'about']:
-                    continue
-                
-                name = a.get_text(strip=True) or "Unknown Group"
-                if group_id not in seen_ids:
-                    groups.append({'id': group_id, 'name': name})
-                    seen_ids.add(group_id)
-        return groups
-
     def _scrape_groups_via_cookies(self):
         if not os.path.exists(self.cookie_file):
             raise Exception("API failed and config/cookies.json not found. Please export cookies using EditThisCookie.")
@@ -113,16 +89,14 @@ class FacebookClient:
                 print(f"Network error during scraping: {e}")
                 break
 
-            # Use robust extraction
-            new_groups = self._extract_groups_from_html(resp.text)
-            for g in new_groups:
-                if g['id'] not in seen_ids:
-                    groups.append(g)
-                    seen_ids.add(g['id'])
-
             soup = BeautifulSoup(resp.text, 'html.parser')
+            # Check for login checkpoints or expiration
             if any(x in (soup.title.string.lower() if soup.title else "") for x in ['log in', 'entrar', 'welcome', 'checkpoint']):
                 raise Exception("Cookies Invalid or Expired.")
+
+            # Extract groups from current page
+            new_groups = self._extract_groups_from_html(soup, seen_ids)
+            groups.extend(new_groups)
 
             next_link = soup.find('a', string=lambda t: t and "See more" in t)
             if next_link and next_link.has_attr('href'):
@@ -134,16 +108,16 @@ class FacebookClient:
                 url = None
         
         if not groups:
-            # Fallback to local file parsing if network scraping fails
-            # 1. Try HTML dump if available
+            # Fallback 1: Local HTML File (Desktop HTML)
             if os.path.exists("groups.html"):
-                 print("📂 Parsing local groups.html...")
-                 with open("groups.html", "r", encoding="utf-8") as f:
-                     groups = self._extract_groups_from_html(f.read())
+                print("⚠️ Network scrape failed. Trying local 'groups.html'...")
+                with open("groups.html", "r", encoding="utf-8") as f:
+                    soup = BeautifulSoup(f.read(), 'html.parser')
+                    groups.extend(self._extract_groups_from_html(soup, seen_ids))
             
-            # 2. Try TXT list
-            elif os.path.exists("groups.txt"):
-                print("📂 Parsing local groups.txt...")
+            # Fallback 2: Local Text File
+            if not groups and os.path.exists("groups.txt"):
+                print("⚠️ No HTML groups found. Trying local 'groups.txt'...")
                 with open("groups.txt", "r") as f:
                     for line in f:
                         line = line.strip()
@@ -151,6 +125,24 @@ class FacebookClient:
                             groups.append({'id': line.split('/')[-1], 'name': f"Manual: {line}"})
         
         return groups
+
+    def _extract_groups_from_html(self, soup, seen_ids):
+        """Helper to parse groups from BeautifulSoup object using robust Regex."""
+        found = []
+        links = soup.find_all('a', href=True)
+        for a in links:
+            # ROBUST REGEX: Handles relative (/groups/123) and absolute (facebook.com/groups/123)
+            match = re.search(r'(?:facebook\.com|fb\.com)?/groups/([^/?&"]+)', a['href'])
+            if match:
+                group_id = match.group(1)
+                # Filter out common non-group links
+                if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']:
+                    continue
+                name = a.get_text(strip=True) or "Unknown Group"
+                if group_id not in seen_ids:
+                    found.append({'id': group_id, 'name': name})
+                    seen_ids.add(group_id)
+        return found
 
     def post_images(self, group_id, image_paths, caption=None):
         try:
