@@ -152,26 +152,28 @@ class FacebookClient:
                     with open("my_groups.html", "r", encoding="utf-8") as f:
                         html_content = f.read()
                     
-                    # Universal Regex for Desktop/Mobile/Absolute/Relative URLs
-                    # Matches: facebook.com/groups/12345 or /groups/12345
-                    # Captures the ID part (alphanumeric + dots/underscores)
-                    regex_pattern = r'groups\/([a-zA-Z0-9\._-]+)'
+                    # Universal Regex for Desktop & Mobile (Absolute & Relative)
+                    # Captures numeric IDs from:
+                    # - https://www.facebook.com/groups/12345/
+                    # - /groups/12345/
+                    regex_pattern = r'(?:facebook\.com\/groups\/|\/groups\/)([0-9]+)'
                     
-                    matches = re.findall(regex_pattern, html_content)
+                    found_ids = re.findall(regex_pattern, html_content)
+                    unique_local_groups = 0
                     
-                    # Filter keywords
-                    ignored_keywords = {'create', 'search', 'joines', 'feed', 'category', 'discover', 'joins', 'about', 'members'}
-                    
-                    local_found_count = 0
-                    for gid in matches:
-                        gid = gid.strip('.')
-                        if gid.lower() not in ignored_keywords and gid not in seen_ids:
-                            # Use ID as name since raw regex doesn't extract link text reliably in div soup
-                            groups.append({'id': gid, 'name': f"Local File: {gid}"})
-                            seen_ids.add(gid)
-                            local_found_count += 1
+                    for group_id in found_ids:
+                        # Filter Blocklist
+                        if any(kw in group_id for kw in ['create', 'discover', 'category', 'feed']):
+                            continue
                             
-                    print(f"✅ Loaded {local_found_count} groups from 'my_groups.html'.")
+                        if group_id not in seen_ids:
+                            # Since we are using raw regex, we don't have the group name.
+                            # We use a generic name to ensure the ID is captured.
+                            groups.append({'id': group_id, 'name': f"Facebook Group {group_id}"})
+                            seen_ids.add(group_id)
+                            unique_local_groups += 1
+                            
+                    print(f"✅ Loaded {unique_local_groups} groups from 'my_groups.html'.")
                 except Exception as e:
                     print(f"❌ Error parsing 'my_groups.html': {e}")
             else:
