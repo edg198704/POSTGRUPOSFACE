@@ -1,21 +1,89 @@
 body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 20px;
+    color: #333;
 }
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+h2 {
+    color: #1877F2;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+input[type="password"],
 textarea {
     width: 100%;
-    height: 120px;
-    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
 }
+
+textarea {
+    height: 100px;
+    resize: vertical;
+}
+
 button {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
+    cursor: pointer;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
 }
-#logBox {
+
+#selectImgBtn {
+    background-color: #e4e6eb;
+    color: #050505;
+}
+
+.primary-btn {
+    background-color: #1877F2;
+    color: white;
     width: 100%;
-    height: 200px;
+    font-size: 16px;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.primary-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.log-container {
+    margin-top: 20px;
+}
+
+#logBox {
+    background: #282c34;
+    color: #61dafb;
+    padding: 15px;
+    height: 250px;
     overflow-y: auto;
-    background: #f0f0f0;
-    padding: 10px;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
 }
