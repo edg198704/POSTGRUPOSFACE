@@ -1,36 +1,33 @@
 const { ipcRenderer } = require('electron');
 
-let selectedImagePath = null;
-
-document.getElementById('selectImgBtn').onclick = async () => {
-    const path = await ipcRenderer.invoke('select-file');
+// Handle Directory Selection
+document.getElementById('selectDirBtn').onclick = async () => {
+    const path = await ipcRenderer.invoke('select-dir');
     if (path) {
-        selectedImagePath = path;
-        document.getElementById('filePathDisplay').innerText = path;
+        document.getElementById('dirPath').value = path;
     }
 };
 
-document.getElementById("startBtn").onclick = () => {
-    const token = document.getElementById("accessToken").value.trim();
-    const message = document.getElementById("postText").value.trim();
+// Handle Start Button
+document.getElementById('startBtn').onclick = () => {
+    const token = document.getElementById('accessToken').value.trim();
+    const dirPath = document.getElementById('dirPath').value;
+    const manualText = document.getElementById('postText').value;
 
-    if (!token) {
-        alert("Error: Page Access Token is required!");
-        return;
-    }
-    if (!message && !selectedImagePath) {
-        alert("Error: You must provide a message or an image.");
-        return;
-    }
+    if (!token) return alert('Please enter a Page Access Token');
+    if (!dirPath) return alert('Please select a content directory');
 
-    document.getElementById("startBtn").disabled = true;
-    document.getElementById("logBox").textContent = "Starting...\n";
-    
-    ipcRenderer.send('start-post', { token, message, imagePath: selectedImagePath });
+    // Disable button to prevent double click
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('startBtn').innerText = 'Running...';
+
+    ipcRenderer.send('start-post', { token, dirPath, manualText });
 };
 
+// Handle Logs
 ipcRenderer.on('log', (event, msg) => {
-    const logBox = document.getElementById("logBox");
-    logBox.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+    const logBox = document.getElementById('logBox');
+    const timestamp = newjhDate().toLocaleTimeString();
+    logBox.textContent += `[${timestamp}] ${msg}\n`;
     logBox.scrollTop = logBox.scrollHeight;
 });
