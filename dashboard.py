@@ -15,15 +15,6 @@ if 'groups_df' not in st.session_state:
 if 'preview_confirmed' not in st.session_state:
     st.session_state.preview_confirmed = False
 
-# --- CALLBACKS FOR MASS SELECTION ---
-def select_all():
-    if st.session_state.groups_df is not None:
-        st.session_state.groups_df['Select'] = True
-
-def deselect_all():
-    if st.session_state.groups_df is not None:
-        st.session_state.groups_df['Select'] = False
-
 st.title="🤖 Facebook Group Auto-Poster"
 st.markdown("### Control Panel (WSL Edition)")
 
@@ -54,14 +45,17 @@ with col_fetch:
 
 selected_groups = []
 if st.session_state.groups_df is not None:
-    # Mass Selection UI
-    c1, c2, c3 = st.columns([1, 1, 4])
+    # --- MASS SELECTION UI ---
+    c1, c2, c3 = st.columns([1, 1, 5])
     with c1:
-        st.button("✅ Select All", on_click=select_all, use_container_width=True)
+        if st.button("✅ Select All"):
+            st.session_state.groups_df['Select'] = True
+            st.rerun()
     with c2:
-        st.button("UB Deselect All", on_click=deselect_all, use_container_width=True)
+        if st.button("DW Deselect All"):
+            st.session_state.groups_df['Select'] = False
+            st.rerun()
     
-    # Data Editor
     edited_df = st.data_editor(
         st.session_state.groups_df,
         column_config={
@@ -73,10 +67,9 @@ if st.session_state.groups_df is not None:
         hide_index=True,
         use_container_width=True,
         height=300,
-        key="group_editor" # Key helps maintain state stability
+        key="groups_editor"
     )
-    
-    # Sync edits back to session state to persist manual changes
+    # Sync manual changes back to session state
     st.session_state.groups_df = edited_df
     
     selected_groups = edited_df[edited_df["Select"]].to_dict('records')
