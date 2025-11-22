@@ -9,13 +9,14 @@ from bs4 import BeautifulSoup
 class FacebookClient:
     def __init__(self, access_token):
         self.access_token = access_token
-        self.base_url = "https://graph.facebook.com/v19.0"
+        self.base_url = "https://mbasic.facebook.com"
         self.session = requests.Session()
         self.cookie_file = "config/cookies.json"
         self._init_session()
 
     def _init_session(self):
-        """Initialize session with Desktop headers to evade mobile blocks."""
+        """Initialize session with Desktop headers to bypass mobile app enforcement."""
+        # STRICT HEADERS: Impersonate Desktop Chrome to avoid 'Download App' redirects
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -56,63 +57,72 @@ class FacebookClient:
         print(f"[MBASIC] Navigating to {url}...")
         resp = self.session.get(url)
         
-        # 2. Check for Blocks
+        # Check for login redirects
         if 'login' in resp.url or 'checkpoint' in resp.url:
             raise Exception("Cookies expired or checkpoint hit. Please refresh cookies.json")
         
-        if "Facebook Lite" in resp.text or "Facebook no está disponible" in resp.text:
-             with open(f"debug_block_{group_id}.html", "w", encoding="utf-8") as f:
+        # 2. Check for Block (Facebook Lite / Not Available)
+        page_text_lower = resp.text.lower()
+        if "facebook lite" in page_text_lower or "facebook no está disponible" in page_text_lower:
+            with open(f"debug_block_{group_id}.html", "w", encoding="utf-8") as f:
                 f.write(resp.text)
-             raise Exception("Blocked by Facebook (Mobile UA detection). Check debug_block.html")
+            raise Exception("Blocked by Facebook (Mobile App Enforced). Check cookies or User-Agent.")
 
         soup = BeautifulSoup(resp.text, 'html.parser')
-        
+
         # 3. Find Form (Robust Strategy)
-        form = None
-        
-        # Strategy A: Look for the composer form action specifically
+        # First, try finding the form by action regex (legacy method)
         form = soup.find('form', action=re.compile(r'/composer/mbasic/'))
         
-        # Strategy B: Look for the hidden input 'fb_dtsg' and get its parent form
+        # If not found, search specifically for the hidden input 'fb_dtsg' and get its parent form
         if not form:
             dtsg_input = soup.find('input', {'name': 'fb_dtsg'})
             if dtsg_input:
                 form = dtsg_input.find_parent('form')
-
-        # Strategy C: Look for any post form (fallback)
+        
+        # If still not found, dump debug and raise error
         if not form:
-            form = soup.find('form', {'method': 'post'})
-
-        # Validation: Does the form have fb_dtsg?
-        if not form or not form.find('input', {'name': 'fb_dtsg'}):
-            # Save debug HTML
-            filename = f"debug_no_form_{group_id}.html"
-            with open(filename, "w", encoding="utf-8") as f:
+            debug_filename = f"debug_no_form_{group_id}.html"
+            with open(debug_filename, "w", encoding="utf-8") as f:
                 f.write(resp.text)
-            raise Exception(f"Could not find valid post form. Saved debug HTML to {filename}")
+            print(f"Saved debug HTML. Open {debug_filename} to see what the bot saw.")
+            raise Exception(f"Could not find post form. Saved {debug_filename}")
 
         # 4. Extract Inputs
         data = {}
         for inp in form.find_all('input', type='hidden'):
-            data[inp.get('name')] = inp.get('value')
+            if inp.get('name'):
+                data[inp.get('name')] = inp.get('value')
+
+        # Validation: Ensure fb_dtsg is present
+        if 'fb_dtsg' not in data:
+             # Try to find it again inside the form if missed (unlikely with hidden check)
+             dtsg_input = form.find('input', {'name': 'fb_dtsg'})
+             if dtsg_input:
+                 data['fb_dtsg'] = dtsg_input.get('value')
+             else:
+                 raise Exception("fb_dtsg token missing from form inputs.")
 
         # 5. Prepare Payload
         data['xc_message'] = message
         data['view_post'] = 'Post'
         
-        # Handle submit button
+        # Handle submit button (sometimes required)
         submit_btn = form.find('input', type='submit')
         if submit_btn and submit_btn.get('name'):
             data[submit_btn.get('name')] = submit_btn.get('value')
 
-        # 6. Submit
+        # 6. Submit POST
         action_url = "https://mbasic.facebook.com" + form['action']
-        # Update Referer
+        
+        # Update Referer to match the group page we are on
         self.session.headers.update({'Referer': url})
         
+        print(f"[MBASIC] Submitting to {action_url}...")
         post_resp = self.session.post(action_url, data=data)
         post_resp.raise_for_status()
 
+        # 7. Validation
         if post_resp.status_code == 200:
             return f"https://www.facebook.com/groups/{group_id}"
         else:
