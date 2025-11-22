@@ -3,25 +3,22 @@ import pandas as pd
 import os
 import tempfile
 import time
-fromqh dotenv import load_dotenv
+from dotenv import load_dotenv
 from facebook_client import FacebookClient
 
 st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
 load_dotenv()
 default_token = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
 
-# Session State Initialization
 if 'groups_df' not in st.session_state:
     st.session_state.groups_df = None
 if 'preview_confirmed' not in st.session_state:
     st.session_state.preview_confirmed = False
-if 'start_posting' not in st.session_state:
-    st.session_state.start_posting = False
 
 st.title("🤖 Facebook Group Auto-Poster")
 st.markdown("### Control Panel (WSL Edition)")
 
-# Sidebar: Configuration
+# Sidebar
 st.sidebar.header("Configuration")
 token = st.sidebar.text_input("Page Access Token", value=default_token, type="password")
 
@@ -38,9 +35,8 @@ with col_fetch:
                     client = FacebookClient(token)
                     groups = client.get_groups()
                     if groups:
-                        # Convert to DataFrame for selection UI
                         df = pd.DataFrame(groups)
-                        df.insert(0, "Select", True)  # Default Select All
+                        df.insert(0, "Select", True)
                         st.session_state.groups_df = df
                         st.success(f"Loaded {len(groups)} groups.")
                     else:
@@ -50,7 +46,6 @@ with col_fetch:
 
 selected_groups = []
 if st.session_state.groups_df is not None:
-    # Interactive Data Editor for Selection
     edited_df = st.data_editor(
         st.session_state.groups_df,
         column_config={
@@ -63,7 +58,6 @@ if st.session_state.groups_df is not None:
         use_container_width=True,
         height=300
     )
-    # Filter down to selected rows
     selected_groups = edited_df[edited_df["Select"]].to_dict('records')
     st.caption(f"✅ Target: {len(selected_groups)} groups selected.")
 
@@ -87,20 +81,22 @@ with col_input:
 
 with col_preview:
     if st.session_state.preview_confirmed:
-        st.info("👇 Safety Preview")
-        st.markdown(f"**Summary:** Posting to **{len(selected_groups)}** groups.")
-        st.markdown(f"**Caption:** {caption[:100]}..." if len(caption) > 100 else f"**Caption:** {caption}")
-        st.markdown(f"**Images:** {[f.name for f in uploaded_files]}")
+        st.info("👇 Review your post before confirming.")
+        
+        # Exact Summary Format as requested
+        img_names = [f.name for f in uploaded_files]
+        summary_text = f"Posting to {len(selected_groups)} groups. Caption: [{caption[:50]}...]. Images: {img_names}"
+        st.markdown(f"**Summary:** {summary_text}")
         
         if uploaded_files:
-            st.image(uploaded_files, width=100, caption=[f.name for f in uploaded_files])
+            st.image(uploaded_files, width=150, caption=img_names)
         
-        st.warning(f"⚠️ You are about to post to {len(selected_groups)} groups. This cannot be undone.")
+        st.warning(f"⚠️ You are about to post to {len(selected_groups)} groups.")
         if st.button("🚀 CONFIRM & BLAST", type="primary"):
             st.session_state.start_posting = True
 
 # --- STEP 3: EXECUTION ---
-if st.session_state.start_posting:
+if st.session_state.get('start_posting'):
     st.divider()
     st.subheader("3. Live Execution Log")
     log_area = st.empty()
@@ -110,11 +106,9 @@ if st.session_state.start_posting:
     def log(message):
         timestamp = time.strftime("%H:%M:%S")
         logs.append(f"[{timestamp}] {message}")
-        # Keep last 15 lines
         if len(logs) > 15: logs.pop(0)
         log_area.code("\n".join(logs), language="text")
 
-    # Save temp files
     temp_paths = []
     for uf in uploaded_files:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
@@ -147,6 +141,5 @@ if st.session_state.start_posting:
     except Exception as e:
         st.error(f"Critical Error: {str(e)}")
     finally:
-        # Cleanup
         for p in temp_paths:
             if os.path.exists(p): os.remove(p)
