@@ -15,10 +15,9 @@ if 'groups_df' not in st.session_state:
 if 'preview_confirmed' not in st.session_state:
     st.session_state.preview_confirmed = False
 
-st.title("🤖 Facebook Group Auto-Poster")
+st.title="🤖 Facebook Group Auto-Poster"
 st.markdown("### Control Panel (WSL Edition)")
 
-# Sidebar
 st.sidebar.header("Configuration")
 token = st.sidebar.text_input("Page Access Token", value=default_token, type="password")
 
@@ -81,17 +80,15 @@ with col_input:
 
 with col_preview:
     if st.session_state.preview_confirmed:
-        st.info("👇 Review your post before confirming.")
-        
-        # Exact Summary Format as requested
-        img_names = [f.name for f in uploaded_files]
-        summary_text = f"Posting to {len(selected_groups)} groups. Caption: [{caption[:50]}...]. Images: {img_names}"
-        st.markdown(f"**Summary:** {summary_text}")
+        st.info("👇 Safety Preview")
+        st.markdown(f"**Summary:** Posting to **{len(selected_groups)}** groups.")
+        st.markdown(f"**Caption:** {caption}")
+        st.markdown(f"**Images:** {[f.name for f in uploaded_files]}")
         
         if uploaded_files:
-            st.image(uploaded_files, width=150, caption=img_names)
+            st.image(uploaded_files, width=150)
         
-        st.warning(f"⚠️ You are about to post to {len(selected_groups)} groups.")
+        st.warning("⚠️ Please confirm details above.")
         if st.button("🚀 CONFIRM & BLAST", type="primary"):
             st.session_state.start_posting = True
 
