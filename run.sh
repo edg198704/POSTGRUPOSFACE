@@ -11,8 +11,8 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
-# Activate Virtual Environment
-source venv/bin/activate
+# Activate Virtual Environment (POSIX compliant)
+. venv/bin/activate
 
 # Launch Dashboard
 echo "🚀 Launching Dashboard..."
