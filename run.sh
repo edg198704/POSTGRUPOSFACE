@@ -10,6 +10,6 @@ fi
 source venv/bin/activate
 
 echo "🚀 Starting Dashboard..."
-echo "👉 If the browser does not open, copy the URL below (e.g. http://localhost:8501)"
-echo ""
+echo "👉 Opening in your default browser..."
+
 streamlit run dashboard.py
