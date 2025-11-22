@@ -4,8 +4,8 @@
 
 **1. Install & Setup**
 ```bash
-git clone <repo_url>
-cd <repo_folder>
+git clone <https://github.com/edg198704/POSTGRUPOSFACE>
+cd <~/repo>
 bash setup.sh
 ```
 
