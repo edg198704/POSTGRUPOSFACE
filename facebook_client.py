@@ -90,14 +90,17 @@ class FacebookClient:
                 break
 
             soup = BeautifulSoup(resp.text, 'html.parser')
+            # Check for login checkpoints or expiration
             if any(x in (soup.title.string.lower() if soup.title else "") for x in ['log in', 'entrar', 'welcome', 'checkpoint']):
                 raise Exception("Cookies Invalid or Expired.")
 
             links = soup.find_all('a', href=True)
             for a in links:
+                # ROBUST REGEX PARSING
                 match = re.search(r'/groups/([^/?&"]+)', a['href'])
                 if match:
                     group_id = match.group(1)
+                    # Filter out common non-group links
                     if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']:
                         continue
                     name = a.get_text(strip=True) or "Unknown Group"
