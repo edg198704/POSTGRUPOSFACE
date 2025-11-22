@@ -1,47 +1,62 @@
 const { ipcRenderer } = require('electron');
+const fs = require('fs');
+const path = require('path');
 
 window.onload = async () => {
     const config = await ipcRenderer.invoke('get-config');
     if (config.defaultToken) document.getElementById('accessToken').value = config.defaultToken;
 };
 
-document.getElementById('previewBtn').onclick = () => {
-    const files = document.getElementById('imageInput').files;
-    const text = document.getElementById('postText').value;
-    
-    if (files.length === 0) return alert("Select at least one image.");
-
-    const grid = document.getElementById('previewGrid');
-    grid.innerHTML = '';
-    document.getElementById('previewCaption').innerText = text;
-
-    Array.from(files).forEach(file => {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(file);
-        grid.appendChild(img);
-    });
-
-    document.getElementById('previewContainer').style.display = 'block';
-    document.getElementById('startBtn').disabled = false;
+document.getElementById('selectDirBtn').onclick = async () => {
+    const path = await ipcRenderer.invoke('select-dir');
+    if (path) document.getElementById('dirPath').value = path;
 };
 
-document.getElementById('startBtn').onclick = () => {
+// Preview Logic
+document.getElementById('previewBtn').onclick = () => {
+    const dirPath = document.getElementById('dirPath').value;
+    const manualText = document.getElementById('postText').value;
+    
+    if (!dirPath) return alert('Select a directory first');
+
+    fs.readdir(dirPath, (err, files) => {
+        if (err) return alert('Error reading directory');
+        const images = files.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f));
+        
+        if (images.length === 0) return alert('No images found');
+
+        // Show Preview UI
+        document.getElementById('previewSection').style.display = 'block';
+        document.getElementById('previewBtn').style.display = 'none';
+        document.getElementById('previewCaption').innerText = manualText || "(Using description.txt if available)";
+        
+        const imgContainer = document.getElementById('previewImages');
+        imgContainer.innerHTML = '';
+        images.forEach(img => {
+            const el = document.createElement('img');
+            el.src = path.join(dirPath, img);
+            el.style.height = '100px';
+            imgContainer.appendChild(el);
+        });
+    });
+};
+
+// Confirm & Start
+document.getElementById('confirmBtn').onclick = () => {
     const token = document.getElementById('accessToken').value.trim();
-    const text = document.getElementById('postText').value;
-    const fileList = document.getElementById('imageInput').files;
-    const imagePaths = Array.from(fileList).map(f => f.path);
+    const dirPath = document.getElementById('dirPath').value;
+    const manualText = document.getElementById('postText').value;
 
     if (!token) return alert('Token required');
 
-    const btn = document.getElementById('startBtn');
-    btn.disabled = true;
-    btn.innerText = 'Running...';
-
-    ipcRenderer.send('start-post', { token, imagePaths, manualText: text });
+    document.getElementById('confirmBtn').disabled = true;
+    document.getElementById('confirmBtn').innerText = 'Running...';
+    
+    ipcRenderer.send('start-post', { token, dirPath, manualText });
 };
 
 ipcRenderer.on('log', (event, msg) => {
     const logBox = document.getElementById('logBox');
-    logBox.textContent += `[${newjw Date().toLocaleTimeString()}] ${msg}\n`;
+    logBox.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
     logBox.scrollTop = logBox.scrollHeight;
 });
