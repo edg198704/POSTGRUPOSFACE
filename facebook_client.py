@@ -148,23 +148,30 @@ class FacebookClient:
             print("⚠️ Network scraping returned 0 groups. Checking for 'my_groups.html'...")
             if os.path.exists("my_groups.html"):
                 try:
-                    print("📂 Parsing 'my_groups.html'...")
+                    print("📂 Parsing 'my_groups.html' (Universal Regex Mode)...")
                     with open("my_groups.html", "r", encoding="utf-8") as f:
                         html_content = f.read()
                     
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    links = soup.find_all('a', href=True)
-                    for a in links:
-                        href = a['href']
-                        match = re.search(r'/groups/([^/?&"]+)', href)
-                        if match:
-                            group_id = match.group(1)
-                            if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']: continue
-                            name = a.get_text(strip=True) or "Unknown Group"
-                            if group_id not in seen_ids:
-                                groups.append({'id': group_id, 'name': name})
-                                seen_ids.add(group_id)
-                    print(f"✅ Loaded {len(groups)} groups from 'my_groups.html'.")
+                    # Universal Regex for Desktop/Mobile/Absolute/Relative URLs
+                    # Matches: facebook.com/groups/12345 or /groups/12345
+                    # Captures the ID part (alphanumeric + dots/underscores)
+                    regex_pattern = r'groups\/([a-zA-Z0-9\._-]+)'
+                    
+                    matches = re.findall(regex_pattern, html_content)
+                    
+                    # Filter keywords
+                    ignored_keywords = {'create', 'search', 'joines', 'feed', 'category', 'discover', 'joins', 'about', 'members'}
+                    
+                    local_found_count = 0
+                    for gid in matches:
+                        gid = gid.strip('.')
+                        if gid.lower() not in ignored_keywords and gid not in seen_ids:
+                            # Use ID as name since raw regex doesn't extract link text reliably in div soup
+                            groups.append({'id': gid, 'name': f"Local File: {gid}"})
+                            seen_ids.add(gid)
+                            local_found_count += 1
+                            
+                    print(f"✅ Loaded {local_found_count} groups from 'my_groups.html'.")
                 except Exception as e:
                     print(f"❌ Error parsing 'my_groups.html': {e}")
             else:
