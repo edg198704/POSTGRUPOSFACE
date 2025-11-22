@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import tempfile
 import time
-fromyb dotenv import load_dotenv
+from dotenv import load_dotenv
 from facebook_client import FacebookClient
 
 st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
