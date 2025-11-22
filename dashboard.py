@@ -11,12 +11,15 @@ st.set_page_config(page_title="FB Auto Poster", page_icon="wb", layout="wide")
 load_dotenv()
 default_token = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
 
-st.title="🤖 Facebook Group Auto-Poster"
+st.title("🤖 Facebook Group Auto-Poster")
 st.markdown("Control panel for automating posts to all your Facebook Groups.")
 
 # Sidebar: Configuration
 st.sidebar.header("Configuration")
 token = st.sidebar.text_input("Page Access Token", value=default_token, type="password")
+
+if token == "REPLACE_ME":
+    st.sidebar.error("⚠️ Please update your .env file with a valid token.")
 
 # Main Area
 col1, col2 = st.columns([1, 1])
@@ -40,8 +43,8 @@ with col2:
 
 # Logic
 if start_btn:
-    if not token:
-        st.error("❌ Error: Access Token is missing.")
+    if not token or token == "REPLACE_ME":
+        st.error("❌ Error: Invalid Access Token.")
     elif not uploaded_file:
         st.error("❌ Error: Please upload an image.")
     else:
