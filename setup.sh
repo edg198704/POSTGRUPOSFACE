@@ -2,57 +2,49 @@
 set -e
 
 echo "=================================="
-echo "   FB Auto Poster - One-Click Setup"
+echo "   FB Auto Poster - WSL Setup"
 echo "=================================="
 
-# 1. Check Python
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python3 not found. Installing..."
-    sudo apt update && sudo apt install python3 -y
-fi
+# 1. Update and Install System Dependencies
+echo "[1/5] Checking System Dependencies..."
+sudo apt-get update
+# Ensure Python and venv are installed. Node is optional but checked as requested.
+sudo apt-get install -y python3 python3-pip python3-venv
 
-# 2. Check Pip
-if ! command -v pip3 &> /dev/null; then
-    echo "📦 Installing pip..."
-    sudo apt install python3-pip -y
-fi
-
-# 3. Check Node.js (Optional but requested check)
 if ! command -v node &> /dev/null; then
-    echo "⚠️  Node.js not found. (Optional for Python Dashboard)"
+    echo "⚠️  Node.js not found (Optional, skipping)."
 else
-    echo "✅ Node.js found."
+    echo "✅ Node.js detected."
 fi
 
-# 4. Check for venv module
-if ! python3 -c "import venv" &> /dev/null; then
-    echo "❌ Python venv module not found."
-    echo "📦 Installing python3-venv..."
-    sudo apt install python3-venv -y
-fi
-
-# 5. Create Virtual Environment
+# 2. Create Virtual Environment
+echo "[2/5] Setting up Python Virtual Environment..."
 if [ ! -d "venv" ]; then
-    echo "📦 Creating Virtual Environment (venv)..."
     python3 -m venv venv
+    echo "✅ 'venv' created."
 else
-    echo "✅ Venv already exists."
+    echo "✅ 'venv' already exists."
 fi
 
-# 6. Install Dependencies
-echo "⬇️  Installing/Updating Dependencies..."
+# 3. Install Python Libraries
+echo "[3/5] Installing Python Dependencies..."
 source venv/bin/activate
 pip install --upgrade pip > /dev/null
 pip install -r requirements.txt
 
-# 7. Generate .env if missing
+# 4. Configure Environment Variables
+echo "[4/5] Checking Configuration..."
 if [ ! -f ".env" ]; then
-    echo "cF Creating .env file..."
     echo "FACEBOOK_ACCESS_TOKEN=REPLACE_ME" > .env
-    echo "✅ .env created."
+    echo "⚠️  Created .env file. Please edit it with your Access Token."
 else
-    echo "✅ .env found."
+    echo "✅ .env file found."
 fi
 
+# 5. Permissions
+echo "[5/5] Finalizing..."
+chmod +x run.sh
+
 echo ""
-echo -e "\033[0;32mSetup Complete! Now run 'nano .env' to add your keys.\033[0m"
+echo "🎉 Setup Complete!"
+echo "👉 Next Step: Run 'nano .env' to paste your Facebook Token."
