@@ -57,9 +57,15 @@ class FacebookClient:
             cookies_list = json.load(f)
         
         # 1. EXTRACT C_USER (User ID)
-        c_user = next((c['value'] for c in cookies_list if c['name'] == 'c_user'), None)
-        if not c_user or c_user == "PASTE_VALUE_HERE":
-             raise Exception("❌ CONFIG ERROR: 'c_user' cookie is missing or invalid in 'config/cookies.json'.")
+        c_user = None
+        for cookie in cookies_list:
+            if cookie.get('value') == "PASTE_VALUE_HERE":
+                raise Exception("❌ CONFIG ERROR: You must open 'config/cookies.json' and replace 'PASTE_VALUE_HERE' with your actual 'c_user' and 'xs' cookie values.")
+            if cookie.get('name') == 'c_user':
+                c_user = cookie.get('value')
+        
+        if not c_user:
+            raise Exception("❌ Cookie Error: 'c_user' (User ID) not found in cookies.json. Please re-export cookies.")
 
         scrape_session = requests.Session()
         
@@ -82,29 +88,40 @@ class FacebookClient:
             scrape_session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
 
         # 2. TARGET SPECIFIC URL (Profile Groups Tab)
-        # This is the Source of Truth for user groups
         url = f"https://mbasic.facebook.com/profile.php?id={c_user}&v=groups"
         groups = []
         seen_ids = set()
 
-        print(f"⏳ Starting Cookie Scrape for User ID: {c_user}...")
+        print(f"⏳ Starting Cookie Scrape via Profile: {url}")
 
-        # Helper to parse HTML content
-        def parse_html(html_content):
-            soup = BeautifulSoup(html_content, 'html.parser')
-            found_count = 0
-            # 3. ROBUST REGEX
-            # Look for links containing /groups/
+        while url:
+            try:
+                resp = scrape_session.get(url, timeout=30)
+            except Exception as e:
+                print(f"Network error during scraping: {e}")
+                break
+
+            # Check Login/Checkpoint
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            page_title = soup.title.string.lower() if soup.title else ""
+            
+            if any(x in page_title for x in ['log in', 'entrar', 'welcome', 'checkpoint']):
+                with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
+                    f.write(resp.text)
+                raise Exception("Cookies Invalid or Expired. Page title indicates login required. Please update cookies.json.")
+
+            # 3. ROBUST REGEX & PARSING
             links = soup.find_all('a', href=True)
+            found_on_page = 0
+            
             for a in links:
                 href = a['href']
-                # Regex to find: /groups/12345 or /groups/mygroup
-                # Matches: /groups/12345/?refid... or /groups/mygroup?refid...
+                # Matches /groups/12345 or /groups/12345/?refid=...
                 match = re.search(r'/groups/([^/?&"]+)', href)
                 if match:
                     group_id = match.group(1)
-                    # Filter system pages/keywords
-                    if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover', 'zk']:
+                    # Filter system pages
+                    if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']:
                         continue
                     
                     name = a.get_text(strip=True) or "Unknown Group"
@@ -112,51 +129,50 @@ class FacebookClient:
                     if group_id not in seen_ids:
                         groups.append({'id': group_id, 'name': name})
                         seen_ids.add(group_id)
-                        found_count += 1
-            return soup, found_count
+                        found_on_page += 1
 
-        # Network Scraping Loop
-        while url:
-            try:
-                resp = scrape_session.get(url, timeout=30)
-                
-                # Check Login/Checkpoint
-                if any(x in resp.text.lower() for x in ['log in', 'entrar', 'welcome', 'checkpoint']):
-                    with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
-                        f.write(resp.text)
-                    raise Exception("Cookies Invalid or Expired. Page title indicates login required.")
+            print(f"   Found {found_on_page} groups on this page.")
 
-                soup, count = parse_html(resp.text)
-                print(f"   Found {count} groups on this page.")
-
-                # Pagination
-                next_link = soup.find('a', string=lambda t: t and "See more" in t)
-                if next_link and next_link.has_attr('href'):
-                    url = next_link['href']
-                    if not url.startswith('http'):
-                        url = "https://mbasic.facebook.com" + url
-                    time.sleep(random.uniform(2, 4))
-                else:
-                    url = None
-            except Exception as e:
-                print(f"Network error during scraping: {e}")
-                break
+            # Pagination
+            next_link = soup.find('a', string=lambda t: t and "See more" in t)
+            if next_link and next_link.has_attr('href'):
+                url = next_link['href']
+                if not url.startswith('http'):
+                    url = "https://mbasic.facebook.com" + url
+                time.sleep(random.uniform(2, 4))
+            else:
+                url = None
         
         # 4. THE "NUCLEAR" OPTION (Local HTML Fallback)
         if not groups:
             print("⚠️ Network scraping returned 0 groups. Checking for 'my_groups.html'...")
             if os.path.exists("my_groups.html"):
                 try:
+                    print("📂 Parsing 'my_groups.html'...")
                     with open("my_groups.html", "r", encoding="utf-8") as f:
-                        local_html = f.read()
-                    _, count = parse_html(local_html)
-                    print(f"✅ Parsed {count} groups from local file.")
+                        html_content = f.read()
+                    
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    links = soup.find_all('a', href=True)
+                    for a in links:
+                        href = a['href']
+                        match = re.search(r'/groups/([^/?&"]+)', href)
+                        if match:
+                            group_id = match.group(1)
+                            if group_id.lower() in ['create', 'search', 'joines', 'feed', 'category', 'discover']: continue
+                            name = a.get_text(strip=True) or "Unknown Group"
+                            if group_id not in seen_ids:
+                                groups.append({'id': group_id, 'name': name})
+                                seen_ids.add(group_id)
+                    print(f"✅ Loaded {len(groups)} groups from 'my_groups.html'.")
                 except Exception as e:
-                    print(f"❌ Failed to parse local file: {e}")
+                    print(f"❌ Error parsing 'my_groups.html': {e}")
+            else:
+                print("👉 Tip: If scraping fails, open your groups list in Chrome, press Ctrl+S to save as 'my_groups.html' in this folder, and run again.")
 
         # 5. MANUAL FALLBACK (groups.txt)
         if not groups:
-            print("⚠️ Still 0 groups. Checking 'groups.txt'...")
+            print("⚠️ Falling back to 'groups.txt'...")
             if os.path.exists("groups.txt"):
                 with open("groups.txt", "r") as f:
                     lines = f.readlines()
@@ -166,18 +182,22 @@ class FacebookClient:
                         continue
                     
                     url_match = re.search(r'/groups/([0-9]+|[^/?&"]+)', line)
-                    manual_id = url_match.group(1) if url_match else (line.split('/')[-1] if '/' not in line else line)
+                    if url_match:
+                        manual_id = url_match.group(1)
+                    else:
+                        manual_id = line.split('/')[-1] if '/' not in line else line
                     
                     if manual_id and manual_id not in seen_ids:
                         groups.append({'id': manual_id, 'name': f"Manual: {manual_id}"})
                         seen_ids.add(manual_id)
             
-        if not groups:
-            # Dump debug if truly nothing found
-            if 'resp' in locals():
-                with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
-                    f.write(resp.text)
-            raise Exception("No groups found via Scraping, Local HTML, or groups.txt. Check 'debug_mbasic_response.html'.")
+            if groups:
+                print(f"✅ Loaded {len(groups)} groups from 'groups.txt'.")
+            else:
+                if 'resp' in locals():
+                    with open("debug_mbasic_response.html", "w", encoding="utf-8") as f:
+                        f.write(resp.text)
+                raise Exception("No groups found via Scraping, Local HTML, or groups.txt. Check 'debug_mbasic_response.html' or try the 'my_groups.html' method.")
         
         print(f"✅ Total groups available: {len(groups)}")
         return groups
