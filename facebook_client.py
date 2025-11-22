@@ -50,11 +50,19 @@ class FacebookClient:
 
     def _scrape_groups_via_cookies(self):
         if not os.path.exists(self.cookie_file):
-            raise Exception("API failed and config/cookies.json not found. Please export cookies using EditThisCookie.")
+            raise Exception("API failed and config/cookies.json not found. Please create it using the template.")
 
         with open(self.cookie_file, 'r') as f:
-            cookies_list = json.load(f)
+            try:
+                cookies_list = json.load(f)
+            except json.JSONDecodeError:
+                raise Exception("config/cookies.json is not valid JSON.")
         
+        # CRITICAL: Check for placeholders
+        for cookie in cookies_list:
+            if cookie.get('value') in ["PASTE_VALUE_HERE", "REPLACE_ME"]:
+                raise Exception(f"❌ Placeholder detected in cookies.json for '{cookie.get('name')}'. Please open Chrome DevTools -> Application -> Cookies, copy the values for 'c_user' and 'xs', and paste them into config/cookies.json.")
+
         scrape_session = requests.Session()
         scrape_session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -74,23 +82,20 @@ class FacebookClient:
             resp = scrape_session.get(url)
             if "login" in resp.url or resp.status_code != 200:
                 if not groups:
-                    raise Exception("Cookies expired or invalid. Please re-export cookies.")
+                    raise Exception("Cookies expired or invalid (redirected to login). Please re-export cookies from Chrome.")
                 break
 
             soup = BeautifulSoup(resp.text, 'html.parser')
             
-            # Find all group links
+            # Find all group links in mbasic
             for a in soup.find_all('a', href=True):
                 href = a['href']
-                # mbasic links usually look like /groups/123456/?refid=...
                 if '/groups/' in href:
                     try:
-                        # Extract ID safely
+                        # Extract ID safely from /groups/12345/?refid=...
                         parts = href.split('/groups/')
                         if len(parts) > 1:
-                            # Get the part after /groups/
                             id_part = parts[1].split('/')[0].split('?')[0]
-                            
                             if id_part.isdigit() and id_part not in seen_ids:
                                 name = a.get_text().strip()
                                 if name:
@@ -110,7 +115,7 @@ class FacebookClient:
                 url = None
         
         if not groups:
-            raise Exception("No groups found via scraping. Check cookie validity.")
+            raise Exception("No groups found via scraping. Check if your account has groups or if cookies are valid.")
         
         print(f"✅ Scraped {len(groups)} groups via cookies.")
         return groups
