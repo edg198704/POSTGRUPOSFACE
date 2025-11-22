@@ -37,6 +37,9 @@ with col_fetch:
                         df = pd.DataFrame(groups)
                         df.insert(0, "Select", True)
                         st.session_state.groups_df = df
+                        # Reset editor state to ensure new data loads cleanly
+                        if "groups_editor" in st.session_state:
+                            del st.session_state["groups_editor"]
                         st.success(f"Loaded {len(groups)} groups.")
                     else:
                         st.error("No groups found.")
@@ -46,13 +49,21 @@ with col_fetch:
 selected_groups = []
 if st.session_state.groups_df is not None:
     c1, c2, c3 = st.columns([1, 1, 5])
+    
+    # MASS SELECTION LOGIC
     with c1:
         if st.button("✅ Select All"):
             st.session_state.groups_df['Select'] = True
+            # Force editor refresh by clearing its state
+            if "groups_editor" in st.session_state:
+                del st.session_state["groups_editor"]
             st.rerun()
     with c2:
         if st.button("DW Deselect All"):
             st.session_state.groups_df['Select'] = False
+            # Force editor refresh by clearing its state
+            if "groups_editor" in st.session_state:
+                del st.session_state["groups_editor"]
             st.rerun()
     
     edited_df = st.data_editor(
@@ -68,6 +79,7 @@ if st.session_state.groups_df is not None:
         height=300,
         key="groups_editor"
     )
+    # Sync changes back to session state
     st.session_state.groups_df = edited_df
     selected_groups = edited_df[edited_df["Select"]].to_dict('records')
     st.caption(f"✅ Target: {len(selected_groups)} groups selected.")
@@ -118,7 +130,6 @@ if st.session_state.get('start_posting'):
             logs.append(f"[{timestamp}] {message}")
         
         if len(logs) > 15: logs.pop(0)
-        # Render as Markdown to support links
         log_area.markdown("  \n".join(logs))
 
     temp_paths = []
@@ -134,7 +145,6 @@ if st.session_state.get('start_posting'):
         for i, group in enumerate(selected_groups):
             log(f"bw Posting to: {group['name']} ({i+1}/{total})...")
             try:
-                # post_images now returns a link string
                 link = client.post_images(group['id'], temp_paths, caption)
                 log(f"✅ Success: {group['name']}", link)
             except Exception as e:
